@@ -109,14 +109,13 @@ class SerialData:
     reports: dict = field(default_factory=lambda: defaultdict(_create_report_dict))
 
     def get_reportvals_since(self, reporttype, unixtime):
-        reports = self.reports[reporttype]
-        ind = 0
-        for ind, t in enumerate(reversed(reports['unix_time'])):
-            if t < unixtime:
-                break
-        if ind == 0:
-            return []
-        return reports['report_value'][-ind-1:]
+        with self.lock:
+            reports = self.reports[reporttype]
+            times = reports['unix_time']
+            for i, t in enumerate(times):
+                if t >= unixtime:
+                    return reports['report_value'][i:]
+        return []
 
     def get_report_snippet(self, start_unixtime, end_unixtime):
         result = {}
@@ -136,7 +135,6 @@ class SerialMonitor:
         self.baud = baud
         self.timeout = timeout
         self.find_device()
-        self.timeout = timeout
         self.data = SerialData()
         self.abort_flag = False
         self.threadlock = threading.Lock()
@@ -150,6 +148,8 @@ class SerialMonitor:
     def find_device(self):
         ports = list_ports.comports()
         ports = [p for p in ports if 'Arduino' in p.description]
+        if not ports:
+            raise RuntimeError('No Arduino device found. Check USB connection.')
         port = ports[0]
         self.ser = serial.Serial(port.device, self.baud, timeout=self.timeout)
         time.sleep(2)
@@ -157,7 +157,7 @@ class SerialMonitor:
         self.ser.flush()
 
     def listen(self):
-        thread = threading.Thread(target=self._listen)
+        thread = threading.Thread(target=self._listen, daemon=True)
         thread.start()
         time.sleep(2)
 

@@ -137,7 +137,6 @@ def loadh5(fp):
             print(f"Warning: 'root' group not found in HDF5 file: {
                   fp}. Returning None.")
             return None  # Or raise an error
-    return fp
 
 
 def saveh5(fp, data):

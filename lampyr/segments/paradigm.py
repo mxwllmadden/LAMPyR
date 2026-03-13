@@ -18,7 +18,7 @@ class ParadigmSegment(Segment):
         super().__post_init__()
         if self.paradigm_tag is None:
             self.paradigm_tag = self.slug
-        self.tags = [self.paradigm_tag]
+        self.tags.append(self.paradigm_tag)
     
     def _configure(self):
         super()._configure()

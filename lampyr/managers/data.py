@@ -107,8 +107,8 @@ class DataHandler(AbstractManager):
         if not self.enable_failsafe:
             return
         failsafe = self.config.load_extended_config('data_failsafe',
-                                                    default={'session': []})
-        failed_sessions = failsafe.get('session')
+                                                    default=self.CONFIG_FAILSAFE_DEFAULT)
+        failed_sessions = failsafe.get('sessions')
         for session in failed_sessions:
             if not isinstance(session, dict):
                 self._output_func(
@@ -124,10 +124,10 @@ class DataHandler(AbstractManager):
                 shutil.copy(fp, session['target'])
 
     def _logfailure(self, failure_type: str, fps: list, target: str):
-        failures = self.config_failsafe.get(failure_type)
+        failures = self.config_failsafe_data.get(failure_type)
         failures.append({'fps': fps,
                          'target': target})
-        self.config_failsafe.set(failure_type, failures)
+        self.config_failsafe_data.set(failure_type, failures)
 
     def savesession(self, session: Session = None, register=True):
         if session is None:
@@ -161,7 +161,7 @@ class DataHandler(AbstractManager):
     def mouseexists(self, mouseid):
         return os.path.exists(os.path.join(self.config.get('lampyr.mice_directory'),
                                            mouseid,
-                                           'mouseid.lampyr.json'))
+                                           f'{mouseid}_mouse.lampyr.json'))
 
     def mouselist(self) -> List[str]:
         data_dir = self.config.get('lampyr.mice_directory')
@@ -172,7 +172,7 @@ class DataHandler(AbstractManager):
                       if os.path.basename(mpath).split('.')[0] ==
                       os.path.basename(os.path.dirname(mpath)) + '_mouse']
         mouseidlist = [os.path.basename(os.path.dirname(m))
-                       for m in candidate_mice]
+                       for m in mousepaths]
         return mouseidlist, mousepaths
 
     def savemouse(self, mouse: Mouse = None):
