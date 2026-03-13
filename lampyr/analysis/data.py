@@ -77,8 +77,10 @@ def trace_extractor_factory(session, profile: TraceExtractionProfile):
 
 
 class MultiSessionDataset:
-    def __init__(self, fp: str, sessions: List[Session] = [],
+    def __init__(self, fp: str, sessions: List[Session] = None,
                  destructive_overwrite=False):
+        if sessions is None:
+            sessions = []
         # Basic attributes
         self.sessions = []
         self.sessionsbyid = {}

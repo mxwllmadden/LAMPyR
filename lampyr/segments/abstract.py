@@ -66,13 +66,13 @@ class Segment(ABC):
                 self.name = self.slug
         if self.uniqueid is None:
             self.uniqueid = uniqueid(
-                'segement', self.__class__.__name__)
+                'segment', self.__class__.__name__)
         self._inherit()
         self._inherit_from_lampyr()
         if self.session is None:
             self.log_warning('Not able to find a session. Creating new session (destructive).')
             self.session = Session()
-        if self.parent == None:
+        if self.parent is None:
             self.rank = 0
             self.log_debug('No parent detected, marking this segment as root')
             self.session.root = self.uniqueid
@@ -227,6 +227,7 @@ class Segment(ABC):
         hint = self.__annotations__.get(name, None)
         if myattr is None:
             setattr(self, name, attr)
+            return
         if isinstance(attr, list) and isinstance(myattr, list):
             combined = attr + myattr
         elif isinstance(attr, dict) and isinstance(myattr, dict):

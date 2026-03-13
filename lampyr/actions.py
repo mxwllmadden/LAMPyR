@@ -35,7 +35,7 @@ def printinfo(info, indent = 0):
             click.echo(f'{prefix}{k}')
             for vind in v:
                 if isinstance(vind, dict):
-                    printinfo(vind)
+                    printinfo(vind, indent+1)
                 else:
                     click.echo(f'\t{prefix}{vind}')
         else:
