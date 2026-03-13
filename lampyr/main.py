@@ -28,7 +28,7 @@ class Lampyr:
         
         self.rigmanager = RigManager(self)
         self.mousemanager = MouseManager(self)
-        self.notificationmanager = NotificationManager
+        self.notificationmanager = NotificationManager(self)
 
         self.behaviors = {c.__name__: c for c in Segment.get_children()}
         self.paradigms = {}
@@ -69,8 +69,8 @@ class Lampyr:
             rname = self.config.get('rig.name')
             mid = self.mouse.mouseid
             self.notificationmanager.send_notification(
-                f'Lampyr - {rname}',
-                f'{mid} has ended behavior due to {"and".join(stopcodes)}'
+                f'{mid} has ended behavior due to {" and ".join(stopcodes)}',
+                title=f'Lampyr - {rname}'
                 )
             
     

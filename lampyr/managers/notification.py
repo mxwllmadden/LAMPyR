@@ -18,8 +18,8 @@ class NotificationManager(AbstractManager):
         pass
         
     def send_notification(self, message, title="Notification"):
-        user_key = "uomqucympea28qtqrxg46dz3jb43tp"
-        app_token = "afmh5shjmd4pfs88jpm4nga22n62x7"
+        user_key = self.config.get('notifications.pushover_user_key')
+        app_token = self.config.get('notifications.pushover_app_token')
 
         payload = {
             "token": app_token,
