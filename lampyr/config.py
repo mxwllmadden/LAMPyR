@@ -74,7 +74,7 @@ class Config(ConfigFile):
             'name': None,
             'calibrated': 0,
             'configured': False,
-            'sipper_calib': 4000
+            'sipper_calib': 10000
         },
         'notifications': {
             'last_user' : 'mixwell'
