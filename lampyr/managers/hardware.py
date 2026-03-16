@@ -63,7 +63,7 @@ class RigManager(AbstractManager):
             time.sleep(0.1)
             for i in range(200):
                 self.rig.reward.give()
-                time.sleep(0.8)
+                time.sleep(0.4)
             dvol = (inputfloat('INPUT NEW WEIGHT (g):')-initial_value)/200
             self._output_func(f'Reward Size: {disp_size} produces {str(dvol)[:10]} ml reward')
             return dvol
@@ -78,7 +78,7 @@ class RigManager(AbstractManager):
                     est_sipp = 10000
             if est_sipp <= 10000:
                 est_sipp = 10000
-            dsizes = [int(est_sipp/2), est_sipp, int(est_sipp*2)]
+            dsizes = [int(est_sipp*(2/3)), est_sipp, int(est_sipp*1.5)]
             dvols = []
             for disp_size in dsizes:
                 dvol = calib_disp(disp_size)
