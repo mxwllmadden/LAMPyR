@@ -14,8 +14,23 @@ class NotificationManager(AbstractManager):
         self.user = self.config.get('notifications.last_user')
         self.userdata = self.config.load_shared_extended_config('users')
 
-    def add_user(self, name, service, apiid):
-        pass
+    def set_user(self, name):
+        self.user = name
+        self.config.set('notifications.last_user', name)
+
+    def add_user(self, name, pushover_user_key, pushover_app_token, supervisor=False):
+        self.userdata._config[name] = {
+            'pushover_user_key': pushover_user_key,
+            'pushover_app_token': pushover_app_token,
+            'supervisor': supervisor
+        }
+        self.userdata.save()
+
+    def delete_user(self, name):
+        if name not in self.userdata._config:
+            raise KeyError(f"User {name!r} not found.")
+        del self.userdata._config[name]
+        self.userdata.save()
 
     def _get_targets(self):
         all_users = self.userdata.to_dict()
