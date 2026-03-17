@@ -76,7 +76,7 @@ class RigManager(AbstractManager):
                     est_sipp = int(self.config.get('rig.sipper_calib'))
                 except:
                     est_sipp = 10000
-            if est_sipp <= 10000:
+            if est_sipp <= 6000:
                 est_sipp = 10000
             dsizes = [int(est_sipp*(2/3)), est_sipp, int(est_sipp*1.5)]
             dvols = []
