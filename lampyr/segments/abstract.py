@@ -224,7 +224,7 @@ class Segment(ABC):
             setattr(self, name, attr)
             return
         myattr = getattr(self, name)
-        hint = self.__annotations__.get(name, None)
+        hint = getattr(type(self), '__annotations__', {}).get(name, None)
         if myattr is None:
             setattr(self, name, attr)
             return
