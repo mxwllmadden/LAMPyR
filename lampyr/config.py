@@ -89,3 +89,8 @@ class Config(ConfigFile):
     def load_extended_config(self, key, default = {}):
         fp = os.path.join(self._APP_DATA_DIR, f'{key}.json')
         return ConfigFile(default, fp)
+
+    def load_shared_extended_config(self, key, default = {}):
+        shared_dir = self.get('lampyr.mice_directory')
+        fp = os.path.join(shared_dir, f'{key}.json')
+        return ConfigFile(default, fp)

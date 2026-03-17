@@ -12,15 +12,15 @@ import requests
 class NotificationManager(AbstractManager):
     def start(self):
         self.user = self.config.get('notifications.last_user')
-        self.userdata = self.config.load_extended_config('users.json')
-    
+        self.userdata = self.config.load_shared_extended_config('users')
+
     def add_user(self, name, service, apiid):
         pass
-        
+
     def send_notification(self, message, title="Notification"):
         try:
-            user_key = self.config.get('notifications.pushover_user_key')
-            app_token = self.config.get('notifications.pushover_app_token')
+            user_key = self.userdata.get(f'{self.user}.pushover_user_key')
+            app_token = self.userdata.get(f'{self.user}.pushover_app_token')
         except KeyError:
             print('Notifications not configured — skipping push notification.')
             return
