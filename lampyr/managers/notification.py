@@ -18,8 +18,12 @@ class NotificationManager(AbstractManager):
         pass
         
     def send_notification(self, message, title="Notification"):
-        user_key = self.config.get('notifications.pushover_user_key')
-        app_token = self.config.get('notifications.pushover_app_token')
+        try:
+            user_key = self.config.get('notifications.pushover_user_key')
+            app_token = self.config.get('notifications.pushover_app_token')
+        except KeyError:
+            print('Notifications not configured — skipping push notification.')
+            return
 
         payload = {
             "token": app_token,
