@@ -48,7 +48,7 @@ class HabituationTrial(Trial):
     def loop(self):
         # Start behavior
         time.sleep(self.iti_1_dur)
-        self.trigger_event('rewardtone')
+        #self.trigger_event('rewardtone')
         time.sleep(self.reward_delay_s)
         self.trigger_event('reward')
         self.loop_consumption()
