@@ -167,6 +167,76 @@ def mouse_run(lampyr, mouseid, behavior, **kwargs):
         return
     lampyr.run(behavior, **kwargs)
 
+@cli.group()
+def user():
+    pass
+
+@user.command(name='create')
+@click.argument('name')
+@click.option('-super', 'is_super', is_flag=True, default=False, help='Make user a supervisor')
+@click.option('--pushover_user_key', type=str, default=None, help='Pushover user key')
+@click.option('--pushover_app_token', type=str, default=None, help='Pushover app token')
+@click.pass_obj
+def user_create(lampyr, name, is_super, pushover_user_key, pushover_app_token):
+    nm = lampyr.notificationmanager
+    if name in nm.userdata._config:
+        click.echo(f"User '{name}' already exists. Use 'user edit' to modify.")
+        return
+    nm.add_user(name, pushover_user_key or '', pushover_app_token or '', supervisor=is_super)
+    click.echo(f"User '{name}' created.")
+
+@user.command(name='edit')
+@click.argument('name')
+@click.option('--pushover_user_key', type=str, default=None, help='Pushover user key')
+@click.option('--pushover_app_token', type=str, default=None, help='Pushover app token')
+@click.option('--supervisor', type=click.BOOL, default=None, help='Set supervisor status (true/false)')
+@click.pass_obj
+def user_edit(lampyr, name, pushover_user_key, pushover_app_token, supervisor):
+    nm = lampyr.notificationmanager
+    if name not in nm.userdata._config:
+        click.echo(f"User '{name}' not found.")
+        return
+    existing = nm.userdata._config[name]
+    puk = pushover_user_key if pushover_user_key is not None else existing.get('pushover_user_key', '')
+    pat = pushover_app_token if pushover_app_token is not None else existing.get('pushover_app_token', '')
+    sup = supervisor if supervisor is not None else existing.get('supervisor', False)
+    nm.add_user(name, puk, pat, supervisor=sup)
+    click.echo(f"User '{name}' updated.")
+
+@user.command(name='inspect')
+@click.argument('name')
+@click.pass_obj
+def user_inspect(lampyr, name):
+    users = lampyr.notificationmanager.userdata._config
+    if name not in users:
+        click.echo(f"User '{name}' not found.")
+        return
+    actions.printheader(name.upper())
+    actions.printinfo(users[name])
+
+@user.command(name='list')
+@click.pass_obj
+def user_list(lampyr):
+    users = lampyr.notificationmanager.userdata._config
+    if not users:
+        click.echo('No users configured.')
+        return
+    actions.printheader('USERS')
+    for name, data in users.items():
+        supervisor = ' [supervisor]' if data.get('supervisor') else ''
+        click.echo(f'{name}{supervisor}')
+
+@user.command(name='remove')
+@click.argument('name')
+@click.pass_obj
+def user_remove(lampyr, name):
+    nm = lampyr.notificationmanager
+    try:
+        nm.delete_user(name)
+        click.echo(f"User '{name}' removed.")
+    except KeyError as e:
+        click.echo(f"Error: {e}")
+
 @cli.command()
 @click.argument('behavior')
 @click.option('--merit_limit', '-ml', type=int, required=False)

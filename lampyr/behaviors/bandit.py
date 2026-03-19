@@ -6,7 +6,7 @@ Created on Tue Jun 10 13:10:25 2025
 """
 import time
 import random
-from typing import Literal, List
+from typing import Literal, List, Tuple
 
 from lampyr.segments import Trial, Task
 from lampyr.segments.paradigm import Stage
@@ -18,37 +18,31 @@ def event_waterreward(self: Trial):
     self.rig.reward.give()
     self.log_reward()
 
-
-def event_trialrewardtone(self: Trial):
-    self.log_debug('Sending play reward tone command to rig')
-    self.rig.play.rewardtone()
-
-
-def event_trialstarttone(self: Trial):
+def event_trialstart(self: Trial):
     self.log_debug('Sending play trial tone command to rig')
     self.rig.play.begintrialtone()
 
 
 @dataclass
 class HabituationTrial(Trial):
-    iti_1_dur: float = 5
+    iti1_dur: float = 5
     reward_delay_s: float = 1
-    reward_consumption_delay_min: float = 2
-    reward_consumption_delay_max: float = 5
+    reward_consumption_period_s: Tuple[int] = (10,20)
+    reward_consumption_nolick_delay_s: float = 40
     iti2_dur: float = 0.5
 
     def setup(self):
+        self.register_event('trialstart',
+                            #callback=event_trialstart, #No callback for hab trial because trialstart is not signed
+                            description='Beginning of trial')
         self.register_event('reward',
                             callback=event_waterreward,
                             description='Water reward given')
-        self.register_event('rewardtone',
-                            callback=event_trialrewardtone,
-                            description='Reward tone played')
 
     def loop(self):
         # Start behavior
         time.sleep(self.iti_1_dur)
-        #self.trigger_event('rewardtone')
+        self.trigger_event('trialstart')
         time.sleep(self.reward_delay_s)
         self.trigger_event('reward')
         self.loop_consumption()
@@ -58,15 +52,38 @@ class HabituationTrial(Trial):
     def loop_consumption(self):
         slick = time.time()
         licked = False
-        while time.time() - slick < self.reward_consumption_delay_max:
-            if self.rig.licks.since(slick):
+        consumption_period = random.randint(*self.reward_consumption_period_s)
+        while time.time() - slick < consumption_period:
+            if self.rig.licks.since(slick) and licked is False:
                 licked = True
-            if licked == True and time.time() - slick > self.reward_consumption_delay_min:
+            if licked is True and time.time() - slick > consumption_period:
+                break
+            if time.time() - slick > self.reward_consumption_nolick_delay_s:
                 break
             time.sleep(0.01)
         self.create_report('reward_consumed', licked)
         self.log_notice(f'Detected {self.rig.licks.since(slick)} licks')
-        return licked
+        if licked:
+            self.log_merit()
+        else:
+            self.log_abstention()
+
+@dataclass
+class HabituationStage(Stage):
+    slug: str = 'Stage0'
+
+    def define_sessionparams(self):
+        self.set_sessionparam('duration_limit', 60)
+        self.set_sessionparam('serial_abstention_limit', 15)
+        self.set_sessionparam('reward_limit', 200)
+
+    def define_task(self):
+        task = RewardedHabituationTask(parent=self)
+        task.run()
+        del task
+
+    def define_shaping(self):
+        pass
 
 
 @dataclass
@@ -89,11 +106,8 @@ class BanditTrial(Trial):
         self.register_event('reward',
                             callback=event_waterreward,
                             description='Water reward given')
-        self.register_event('rewardtone',
-                            callback=event_trialrewardtone,
-                            description='Reward tone played')
         self.register_event('trialstart',
-                            callback=event_trialstarttone,
+                            callback=event_trialstart,
                             description='Trial begins. Start tone played.')
         self.register_event('pretrialstart',
                             description='beginning of pretrial period')
@@ -359,125 +373,3 @@ class HabituationStage(Stage):
 
     def define_shaping(self):
         pass
-
-def report_count(triallist, segmentlist, report):
-    reportcounts = {}
-    for trial_id in triallist:
-        trial = segmentlist[trial_id]
-        if report in trial['reports']:
-            val = trial['reports'][report]
-        else:
-            val = None
-        if val not in reportcounts:
-            reportcounts[val] = 0
-        reportcounts[val] += 1
-    return reportcounts
-
-@dataclass
-class ResponseAbstractStage(Stage):
-    slug : str = 'ResponseAbstractStage'
-    
-    def define_sessionparams(self):
-        self.set_sessionparam('duration_limit', 60)
-        self.set_sessionparam('serial_abstention_limit', 15)
-        self.set_sessionparam('reward_limit', 200)
-    
-    def define_shaping(self):
-        self.sessionsummary()
-    
-    def sessionsummary(self):
-        trials = self.session.searchself(self, slug = 'BanditTrial',
-                                         type = 'Trial')
-        responsecounts = report_count(trials, self.session.segments, 'response')
-        for resp, num in responsecounts.items():
-            self.log_notice(f'Detected {num} {resp} responses.')
-        resp_r = responsecounts.get('Right', 0)
-        resp_l = responsecounts.get('Left', 0)
-        if resp_r+resp_l == 0:
-            self.log_notice('Sidebias could not be calculated due to no responses.')
-        else:
-            sb_metric = (resp_r-resp_l)/(resp_l+resp_r)
-            sb_perc = (sb_metric * 50)+50
-            self.log_notice(f'Sidebias was: {round(sb_metric,2)} ({round(sb_perc)}% Right)')
-        
-
-@dataclass
-class AnyWheelStage(ResponseAbstractStage):
-    slug: str = 'AnyWheel'
-
-    def define_task(self):
-        task = BanditTask(parent=self,
-                          target_mode='Any',
-                          reward_prob_target = 100,
-                          reward_prob_offtarget= 0,
-                          rescue_trial_enabled=True,
-                          taskblocks_enabled=False
-                          )
-        task.run()
-        del task
-
-@dataclass
-class AltWheelStage(ResponseAbstractStage):
-    slug: str = 'AltWheel'
-
-    def define_task(self):
-        task = BanditTask(parent=self,
-                          reward_prob_target = 100,
-                          reward_prob_offtarget= 0,
-                          rescue_trial_enabled=True,
-                          )
-        task.run()
-        del task
-        
-@dataclass
-class BanditTrainingStage(ResponseAbstractStage):
-    slug: str = 'BanditTraining'
-    _task: object = None
-
-    def define_task(self):
-        task = BanditTask(parent=self,
-                          rescue_trial_enabled=True)
-        task.run()
-        self._task = task
-
-@dataclass
-class RandomBanditStage(ResponseAbstractStage):
-    slug: str = 'RandomBandit'
-    _task: object = None
-
-    def define_task(self):
-        task = BanditTask(parent = self,
-                          rescue_trial_enabled = False,
-                          taskblocks_blockcounttype='RewardedMerit',
-                          taskblocks_consecutivecounttype='Merit',
-                          taskblocks_minimumconsecutivecount = 3,
-                          random_target_probs_enabled = True)
-        task.run()
-        self._task = task
-
-
-@dataclass
-class BanditEndStage(ResponseAbstractStage):
-    slug: str = 'Bandit'
-
-    def define_task(self):
-        task = BanditTask(parent=self,
-                          rescue_trial_enabled = False)
-        task.run()
-        del task
-
-
-if __name__ == '__main__':
-    from lampyr.rigcontrol import ArduinoBanditRig_0
-    from lampyr.primatives import Session
-    rig = ArduinoBanditRig_0()
-    session = Session(trial_limit=2)
-    try:
-        rig.listen()
-        t = AltWheelStage(session=session,
-                          rig=rig,
-                          _verbose=True)
-        t.run()
-    finally:
-        rig.abort()
-        rig.close()
