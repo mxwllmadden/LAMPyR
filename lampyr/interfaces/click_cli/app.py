@@ -269,9 +269,20 @@ def go():
     import sys
     if sys.platform == "win32":
         import ctypes
+        # Fullscreen
         KEYEVENTF_KEYUP = 0x0002
         VK_F11 = 0x7A
-        ctypes.windll.user32.keybd_event(VK_F11, 0, 0, 0)           # F11 down
-        ctypes.windll.user32.keybd_event(VK_F11, 0, KEYEVENTF_KEYUP, 0)  # F11 up
+        ctypes.windll.user32.keybd_event(VK_F11, 0, 0, 0)
+        ctypes.windll.user32.keybd_event(VK_F11, 0, KEYEVENTF_KEYUP, 0)
+        # Disable Quick Edit Mode so touch/mouse events reach Textual
+        STD_INPUT_HANDLE   = -10
+        ENABLE_MOUSE_INPUT  = 0x0010
+        ENABLE_QUICK_EDIT   = 0x0040
+        ENABLE_EXTENDED     = 0x0080
+        handle = ctypes.windll.kernel32.GetStdHandle(STD_INPUT_HANDLE)
+        mode = ctypes.c_ulong()
+        ctypes.windll.kernel32.GetConsoleMode(handle, ctypes.byref(mode))
+        new_mode = (mode.value | ENABLE_MOUSE_INPUT | ENABLE_EXTENDED) & ~ENABLE_QUICK_EDIT
+        ctypes.windll.kernel32.SetConsoleMode(handle, new_mode)
     from lampyr.interfaces.textual_tui.app import LampyrApp
     LampyrApp().run()
