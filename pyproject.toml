@@ -6,10 +6,17 @@ authors = [
     { name = "Maxwell Madden", email = "mxwllmadden@gmail.com" }
 ]
 dependencies = [
-    "pyserial"
+    "pyserial",
+    "click",
+    "textual",
+    "art",
+    "numpy>=1.21",
+    "pandas",
+    "h5py",
+    "requests",
 ]
 readme = ""
-requires-python = ">=3.7"
+requires-python = ">=3.10"
 
 [project.urls]
 Homepage = "https://github.com/mxwllmadden"

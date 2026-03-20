@@ -11,6 +11,10 @@ dependencies:
   - spyder-kernels=3.0
   - textual
   - textual-dev
+  - click
   - keyboard
+  - pip
+  - pip:
+    - art
   - h5py
   - requests
