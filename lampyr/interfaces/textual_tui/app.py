@@ -566,7 +566,8 @@ class LampyrApp(App):
             isinstance(s, (CalibrationScreen, CalibrationConfirmScreen))
             for s in self.screen_stack
         )
-        if expired and not already_active:
+        session_running = any(isinstance(s, RunScreen) for s in self.screen_stack)
+        if expired and not already_active and not session_running:
             self.push_screen(CalibrationConfirmScreen())
 
 
