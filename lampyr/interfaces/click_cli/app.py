@@ -263,6 +263,189 @@ def run(lampyr : Lampyr, behavior, **kwargs):
         return
     lampyr.run(behavior, **kwargs)
 
+def _start_touch_mouse_bridge():
+    """Invisible fullscreen Win32 overlay that converts WM_TOUCH/WM_POINTER touch
+    events to mouse clicks via SendInput.  Windows Terminal suppresses touch-to-mouse
+    promotion for its own window, so Textual never sees taps without this shim."""
+    import ctypes
+    import ctypes.wintypes
+    import threading
+    import time
+
+    user32   = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+
+    WS_POPUP          = 0x80000000
+    WS_EX_LAYERED     = 0x00080000
+    WS_EX_TRANSPARENT = 0x00000020
+    WS_EX_TOPMOST     = 0x00000008
+    WS_EX_NOACTIVATE  = 0x08000000
+    WS_EX_TOOLWINDOW  = 0x00000080
+    LWA_ALPHA         = 0x00000002
+    GWL_EXSTYLE       = -20
+    WM_TOUCH          = 0x0240
+    WM_POINTERDOWN    = 0x0246
+    WM_POINTERUP      = 0x0247
+    WM_DESTROY        = 0x0002
+    TOUCHEVENTF_DOWN  = 0x0002
+    TOUCHEVENTF_UP    = 0x0004
+    INPUT_MOUSE           = 0
+    MOUSEEVENTF_MOVE      = 0x0001
+    MOUSEEVENTF_LEFTDOWN  = 0x0002
+    MOUSEEVENTF_LEFTUP    = 0x0004
+    MOUSEEVENTF_ABSOLUTE  = 0x8000
+    MOUSEEVENTF_VIRTUALDESK = 0x4000
+
+    # Virtual desktop bounds (handles multi-monitor)
+    sw = user32.GetSystemMetrics(78) or user32.GetSystemMetrics(0)
+    sh = user32.GetSystemMetrics(79) or user32.GetSystemMetrics(1)
+    sx = user32.GetSystemMetrics(76)
+    sy = user32.GetSystemMetrics(77)
+
+    class TOUCHINPUT(ctypes.Structure):
+        _fields_ = [
+            ('x', ctypes.c_long), ('y', ctypes.c_long),
+            ('hSource', ctypes.c_void_p), ('dwID', ctypes.c_ulong),
+            ('dwFlags', ctypes.c_ulong), ('dwMask', ctypes.c_ulong),
+            ('dwTime', ctypes.c_ulong), ('dwExtraInfo', ctypes.POINTER(ctypes.c_ulong)),
+            ('cxContact', ctypes.c_ulong), ('cyContact', ctypes.c_ulong),
+        ]
+
+    class MOUSEINPUT(ctypes.Structure):
+        _fields_ = [
+            ('dx', ctypes.c_long), ('dy', ctypes.c_long),
+            ('mouseData', ctypes.c_ulong), ('dwFlags', ctypes.c_ulong),
+            ('time', ctypes.c_ulong), ('dwExtraInfo', ctypes.POINTER(ctypes.c_ulong)),
+        ]
+
+    class INPUT(ctypes.Structure):
+        class _U(ctypes.Union):
+            _fields_ = [('mi', MOUSEINPUT)]
+        _anonymous_ = ('_u',)
+        _fields_ = [('type', ctypes.c_ulong), ('_u', _U)]
+
+    overlay = [None]   # mutable hwnd ref shared with closures
+    injecting = [False]
+
+    def inject(x, y, flags):
+        """Inject a mouse event at screen coords (x, y), briefly making the overlay
+        pass-through so the event reaches the terminal below."""
+        inp = INPUT()
+        inp.type = INPUT_MOUSE
+        inp.mi.dx = int((x - sx) * 65535 // sw)
+        inp.mi.dy = int((y - sy) * 65535 // sh)
+        inp.mi.dwFlags = flags | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
+        hwnd = overlay[0]
+        injecting[0] = True
+        if hwnd:
+            old = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            user32.SetWindowLongW(hwnd, GWL_EXSTYLE, old | WS_EX_TRANSPARENT)
+            user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+            # Brief pause ensures SendInput is dispatched before we remove transparency
+            time.sleep(0.01)
+            user32.SetWindowLongW(hwnd, GWL_EXSTYLE, old)
+        else:
+            user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+        injecting[0] = False
+
+    def get_xy(lp):
+        """Extract signed screen coords from a WM_POINTER lParam."""
+        return (ctypes.c_short(lp & 0xFFFF).value,
+                ctypes.c_short((lp >> 16) & 0xFFFF).value)
+
+    WNDPROC = ctypes.WINFUNCTYPE(
+        ctypes.c_long, ctypes.c_void_p, ctypes.c_uint,
+        ctypes.c_size_t, ctypes.c_size_t,
+    )
+
+    def wndproc(hwnd, msg, wp, lp):
+        # ── WM_TOUCH (reliable path when RegisterTouchWindow is used) ────────
+        if msg == WM_TOUCH:
+            count  = wp & 0xFFFF
+            handle = ctypes.c_void_p(lp)
+            touches = (TOUCHINPUT * count)()
+            if user32.GetTouchInputInfo(handle, count,
+                                        ctypes.byref(touches),
+                                        ctypes.sizeof(TOUCHINPUT)):
+                for t in touches:
+                    # WM_TOUCH coords are in hundredths of pixels
+                    x, y = t.x // 100, t.y // 100
+                    if t.dwFlags & TOUCHEVENTF_DOWN:
+                        inject(x, y, MOUSEEVENTF_MOVE)
+                        inject(x, y, MOUSEEVENTF_LEFTDOWN)
+                    elif t.dwFlags & TOUCHEVENTF_UP:
+                        inject(x, y, MOUSEEVENTF_LEFTUP)
+            user32.CloseTouchInputHandle(handle)
+            return 0
+
+        # ── WM_POINTER (fallback) ─────────────────────────────────────────────
+        if msg == WM_POINTERDOWN and not injecting[0]:
+            x, y = get_xy(lp)
+            inject(x, y, MOUSEEVENTF_MOVE)
+            inject(x, y, MOUSEEVENTF_LEFTDOWN)
+            return 0
+        if msg == WM_POINTERUP and not injecting[0]:
+            x, y = get_xy(lp)
+            inject(x, y, MOUSEEVENTF_LEFTUP)
+            return 0
+
+        if msg == WM_DESTROY:
+            user32.PostQuitMessage(0)
+            return 0
+        return user32.DefWindowProcW(hwnd, msg, wp, lp)
+
+    cb = WNDPROC(wndproc)
+    _start_touch_mouse_bridge._cb_ref = cb  # prevent GC
+
+    def run():
+        class WNDCLASSW(ctypes.Structure):
+            _fields_ = [
+                ('style', ctypes.c_uint), ('lpfnWndProc', WNDPROC),
+                ('cbClsExtra', ctypes.c_int), ('cbWndExtra', ctypes.c_int),
+                ('hInstance', ctypes.c_void_p), ('hIcon', ctypes.c_void_p),
+                ('hCursor', ctypes.c_void_p), ('hbrBackground', ctypes.c_void_p),
+                ('lpszMenuName', ctypes.c_wchar_p), ('lpszClassName', ctypes.c_wchar_p),
+            ]
+
+        hmod = kernel32.GetModuleHandleW(None)
+        wc = WNDCLASSW()
+        wc.lpfnWndProc   = cb
+        wc.hInstance     = hmod
+        wc.lpszClassName = 'LampyrTouchBridge'
+        user32.RegisterClassW(ctypes.byref(wc))
+
+        hwnd = user32.CreateWindowExW(
+            WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
+            'LampyrTouchBridge', None, WS_POPUP,
+            sx, sy, sw, sh, None, None, hmod, None,
+        )
+        if not hwnd:
+            return
+
+        overlay[0] = hwnd
+        # Alpha=1 (not 0): alpha=0 causes Windows to exclude the window from
+        # hit-testing entirely, so it never receives touch events.
+        user32.SetLayeredWindowAttributes(hwnd, 0, 1, LWA_ALPHA)
+        user32.RegisterTouchWindow(hwnd, 0x00000002)  # TWF_WANTPALM
+        user32.ShowWindow(hwnd, 4)   # SW_SHOWNOACTIVATE
+        user32.UpdateWindow(hwnd)
+
+        class MSG(ctypes.Structure):
+            _fields_ = [
+                ('hwnd', ctypes.c_void_p), ('message', ctypes.c_uint),
+                ('wParam', ctypes.c_size_t), ('lParam', ctypes.c_size_t),
+                ('time', ctypes.c_ulong), ('pt', ctypes.wintypes.POINT),
+            ]
+
+        msg = MSG()
+        while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) != 0:
+            user32.TranslateMessage(ctypes.byref(msg))
+            user32.DispatchMessageW(ctypes.byref(msg))
+
+    threading.Thread(target=run, daemon=True).start()
+    time.sleep(0.15)  # allow the overlay window to finish initialising
+
+
 @cli.command()
 def go():
     """Launch the Lampyr TUI."""
@@ -274,15 +457,19 @@ def go():
         VK_F11 = 0x7A
         ctypes.windll.user32.keybd_event(VK_F11, 0, 0, 0)
         ctypes.windll.user32.keybd_event(VK_F11, 0, KEYEVENTF_KEYUP, 0)
-        # Disable Quick Edit Mode so touch/mouse events reach Textual
-        STD_INPUT_HANDLE   = -10
-        ENABLE_MOUSE_INPUT  = 0x0010
-        ENABLE_QUICK_EDIT   = 0x0040
-        ENABLE_EXTENDED     = 0x0080
+        # Disable Quick Edit Mode
+        STD_INPUT_HANDLE  = -10
+        ENABLE_MOUSE_INPUT = 0x0010
+        ENABLE_QUICK_EDIT  = 0x0040
+        ENABLE_EXTENDED    = 0x0080
         handle = ctypes.windll.kernel32.GetStdHandle(STD_INPUT_HANDLE)
         mode = ctypes.c_ulong()
         ctypes.windll.kernel32.GetConsoleMode(handle, ctypes.byref(mode))
-        new_mode = (mode.value | ENABLE_MOUSE_INPUT | ENABLE_EXTENDED) & ~ENABLE_QUICK_EDIT
-        ctypes.windll.kernel32.SetConsoleMode(handle, new_mode)
+        ctypes.windll.kernel32.SetConsoleMode(
+            handle,
+            (mode.value | ENABLE_MOUSE_INPUT | ENABLE_EXTENDED) & ~ENABLE_QUICK_EDIT,
+        )
+        # Touch-to-mouse bridge
+        _start_touch_mouse_bridge()
     from lampyr.interfaces.textual_tui.app import LampyrApp
     LampyrApp().run()
