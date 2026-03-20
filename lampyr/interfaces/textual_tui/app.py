@@ -5,6 +5,7 @@ Launched via: lampyr go
 """
 
 import ctypes
+import re as _re
 import threading
 import time
 from importlib import resources as impres
@@ -21,6 +22,21 @@ from textual.widgets import Button, Footer, Label, RichLog
 
 from lampyr import Lampyr
 from lampyr import actions
+
+
+# ---------------------------------------------------------------------------
+# TUI display helper — shorten [segment_name] slug to uppercase letters + digits
+# ---------------------------------------------------------------------------
+
+def _shorten_segment_slug(text: str) -> str:
+    """TUI display only: compress the [segment_name] bracket to uppercase+digits."""
+    count = [0]
+    def _replace(m):
+        count[0] += 1
+        if count[0] == 2:
+            return '[' + _re.sub(r'[^A-Z0-9]', '', m.group(1)) + ']'
+        return m.group(0)
+    return _re.sub(r'\[([^\]]*)\]', _replace, text)
 
 
 # ---------------------------------------------------------------------------
@@ -313,7 +329,7 @@ class RunScreen(Screen):
         self._thread: threading.Thread | None = None
 
     def compose(self) -> ComposeResult:
-        yield RichLog(id="run-output", markup=True, highlight=True)
+        yield RichLog(id="run-output", markup=True, highlight=True, wrap=True)
         yield Button("⏹  ABORT", id="action-btn", variant="error")
 
     def on_mount(self) -> None:
@@ -328,7 +344,7 @@ class RunScreen(Screen):
 
     @on(LogOutput)
     def on_log(self, event: LogOutput) -> None:
-        self.query_one("#run-output", RichLog).write(Text.from_ansi(event.text))
+        self.query_one("#run-output", RichLog).write(Text.from_ansi(_shorten_segment_slug(event.text)))
 
     def _run(self) -> None:
         import traceback as _tb
