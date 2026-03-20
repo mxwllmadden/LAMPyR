@@ -297,10 +297,18 @@ def _start_touch_mouse_bridge():
     WM_DESTROY        = 0x0002
     TOUCHEVENTF_DOWN  = 0x0002
     TOUCHEVENTF_UP    = 0x0004
+    WM_LBUTTONDOWN  = 0x0201
+    WM_LBUTTONUP    = 0x0202
+    WM_RBUTTONDOWN  = 0x0204
+    WM_RBUTTONUP    = 0x0205
+    WM_MOUSEWHEEL   = 0x020A
     INPUT_MOUSE           = 0
     MOUSEEVENTF_MOVE      = 0x0001
     MOUSEEVENTF_LEFTDOWN  = 0x0002
     MOUSEEVENTF_LEFTUP    = 0x0004
+    MOUSEEVENTF_RIGHTDOWN = 0x0008
+    MOUSEEVENTF_RIGHTUP   = 0x0010
+    MOUSEEVENTF_WHEEL     = 0x0800
     MOUSEEVENTF_ABSOLUTE  = 0x8000
     MOUSEEVENTF_VIRTUALDESK = 0x4000
 
@@ -336,15 +344,42 @@ def _start_touch_mouse_bridge():
     injecting = [False]
 
     def inject(x, y, flags):
-        """Inject a mouse event at screen coords (x, y).  The overlay is permanently
-        WS_EX_TRANSPARENT so injected events always reach the terminal below."""
+        """Inject a mouse event at screen coords (x, y), briefly making the overlay
+        WS_EX_TRANSPARENT so the event reaches the terminal below."""
         inp = INPUT()
         inp.type = INPUT_MOUSE
         inp.mi.dx = int((x - sx) * 65535 // sw)
         inp.mi.dy = int((y - sy) * 65535 // sh)
         inp.mi.dwFlags = flags | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
+        hwnd = overlay[0]
         injecting[0] = True
-        user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+        if hwnd:
+            old = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            user32.SetWindowLongW(hwnd, GWL_EXSTYLE, old | WS_EX_TRANSPARENT)
+            user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+            # Brief pause ensures SendInput is dispatched before we remove transparency
+            time.sleep(0.01)
+            user32.SetWindowLongW(hwnd, GWL_EXSTYLE, old)
+        else:
+            user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+        injecting[0] = False
+
+    def inject_wheel(delta):
+        """Inject a mouse-wheel event, briefly making the overlay transparent."""
+        inp = INPUT()
+        inp.type = INPUT_MOUSE
+        inp.mi.mouseData = ctypes.c_ulong(delta).value
+        inp.mi.dwFlags = MOUSEEVENTF_WHEEL
+        hwnd = overlay[0]
+        injecting[0] = True
+        if hwnd:
+            old = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            user32.SetWindowLongW(hwnd, GWL_EXSTYLE, old | WS_EX_TRANSPARENT)
+            user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+            time.sleep(0.01)
+            user32.SetWindowLongW(hwnd, GWL_EXSTYLE, old)
+        else:
+            user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
         injecting[0] = False
 
     def get_xy(lp):
@@ -376,6 +411,30 @@ def _start_touch_mouse_bridge():
                         inject(x, y, MOUSEEVENTF_LEFTUP)
             user32.CloseTouchInputHandle(handle)
             return 0
+
+        # ── Real mouse clicks (overlay intercepts these; forward them through) ──
+        if not injecting[0]:
+            pt = ctypes.wintypes.POINT()
+            user32.GetCursorPos(ctypes.byref(pt))
+            x, y = pt.x, pt.y
+            if msg == WM_LBUTTONDOWN:
+                inject(x, y, MOUSEEVENTF_MOVE)
+                inject(x, y, MOUSEEVENTF_LEFTDOWN)
+                return 0
+            if msg == WM_LBUTTONUP:
+                inject(x, y, MOUSEEVENTF_LEFTUP)
+                return 0
+            if msg == WM_RBUTTONDOWN:
+                inject(x, y, MOUSEEVENTF_MOVE)
+                inject(x, y, MOUSEEVENTF_RIGHTDOWN)
+                return 0
+            if msg == WM_RBUTTONUP:
+                inject(x, y, MOUSEEVENTF_RIGHTUP)
+                return 0
+            if msg == WM_MOUSEWHEEL:
+                delta = ctypes.c_short(wp >> 16).value
+                inject_wheel(delta)
+                return 0
 
         # ── WM_POINTER (fallback) ─────────────────────────────────────────────
         if msg == WM_POINTERDOWN and not injecting[0]:
@@ -414,7 +473,7 @@ def _start_touch_mouse_bridge():
         user32.RegisterClassW(ctypes.byref(wc))
 
         hwnd = user32.CreateWindowExW(
-            WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
+            WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
             'LampyrTouchBridge', None, WS_POPUP,
             sx, sy, sw, sh, None, None, hmod, None,
         )
