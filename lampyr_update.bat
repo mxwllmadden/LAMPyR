@@ -7,4 +7,5 @@ call conda env update --name mx_hardware --file "N:\Maxwell\Lampyr\mx_hardware.y
 pip install art
 pip uninstall lampyr -y
 pip install --no-deps "git+https://github.com/mxwllmadden/Lampyr.git@main"
+lampyr go
 cmd /k

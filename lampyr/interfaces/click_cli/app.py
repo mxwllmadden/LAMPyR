@@ -275,6 +275,14 @@ def _start_touch_mouse_bridge():
     user32   = ctypes.windll.user32
     kernel32 = ctypes.windll.kernel32
 
+    user32.DefWindowProcW.restype  = ctypes.c_ssize_t   # LRESULT (pointer-sized)
+    user32.DefWindowProcW.argtypes = [
+        ctypes.c_void_p,  # HWND
+        ctypes.c_uint,    # UINT Msg
+        ctypes.c_size_t,  # WPARAM
+        ctypes.c_size_t,  # LPARAM
+    ]
+
     WS_POPUP          = 0x80000000
     WS_EX_LAYERED     = 0x00080000
     WS_EX_TRANSPARENT = 0x00000020
@@ -328,24 +336,15 @@ def _start_touch_mouse_bridge():
     injecting = [False]
 
     def inject(x, y, flags):
-        """Inject a mouse event at screen coords (x, y), briefly making the overlay
-        pass-through so the event reaches the terminal below."""
+        """Inject a mouse event at screen coords (x, y).  The overlay is permanently
+        WS_EX_TRANSPARENT so injected events always reach the terminal below."""
         inp = INPUT()
         inp.type = INPUT_MOUSE
         inp.mi.dx = int((x - sx) * 65535 // sw)
         inp.mi.dy = int((y - sy) * 65535 // sh)
         inp.mi.dwFlags = flags | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK
-        hwnd = overlay[0]
         injecting[0] = True
-        if hwnd:
-            old = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-            user32.SetWindowLongW(hwnd, GWL_EXSTYLE, old | WS_EX_TRANSPARENT)
-            user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
-            # Brief pause ensures SendInput is dispatched before we remove transparency
-            time.sleep(0.01)
-            user32.SetWindowLongW(hwnd, GWL_EXSTYLE, old)
-        else:
-            user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+        user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
         injecting[0] = False
 
     def get_xy(lp):
@@ -415,7 +414,7 @@ def _start_touch_mouse_bridge():
         user32.RegisterClassW(ctypes.byref(wc))
 
         hwnd = user32.CreateWindowExW(
-            WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
+            WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
             'LampyrTouchBridge', None, WS_POPUP,
             sx, sy, sw, sh, None, None, hmod, None,
         )
@@ -473,3 +472,4 @@ def go():
         _start_touch_mouse_bridge()
     from lampyr.interfaces.textual_tui.app import LampyrApp
     LampyrApp().run()
+    sys.exit(0)

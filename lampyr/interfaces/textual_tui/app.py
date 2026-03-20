@@ -177,6 +177,33 @@ class NumpadModal(ModalScreen):
 
 
 # ---------------------------------------------------------------------------
+# CalibrationConfirmScreen — yellow gate shown before calibration starts
+# ---------------------------------------------------------------------------
+
+class CalibrationConfirmScreen(Screen):
+    """Shown before starting calibration so an unattended rig check never
+    silently opens the serial port."""
+
+    def compose(self) -> ComposeResult:
+        yield Label("⚠  CALIBRATION", id="calib-header")
+        yield Label(
+            "This will connect to the Arduino rig and begin the calibration "
+            "procedure.\n\nEnsure the rig is available and press CONFIRM to proceed.",
+            id="calib-subheader",
+        )
+        yield Button("✓  BEGIN CALIBRATION", id="confirm-yes")
+        yield Button("✗  CANCEL",            id="confirm-no")
+
+    @on(Button.Pressed, "#confirm-yes")
+    def on_yes(self) -> None:
+        self.app.switch_screen(CalibrationScreen())
+
+    @on(Button.Pressed, "#confirm-no")
+    def on_no(self) -> None:
+        self.app.pop_screen()
+
+
+# ---------------------------------------------------------------------------
 # CalibrationScreen — walks user through calibration cycle
 # ---------------------------------------------------------------------------
 
@@ -197,8 +224,10 @@ class CalibrationScreen(Screen):
             id="calib-subheader",
         )
         yield RichLog(id="calib-log", markup=True, highlight=True)
+        yield Button("◀  RETURN TO MAIN", id="calib-return")
 
     def on_mount(self) -> None:
+        self.query_one("#calib-return").display = False
         log = self.query_one("#calib-log", RichLog)
         log.border_title = "Calibration Output"
         # post_message is explicitly thread-safe; use it instead of call_from_thread
@@ -219,9 +248,14 @@ class CalibrationScreen(Screen):
             self.post_message(
                 CalibrationScreen.LogOutput(f"\x1b[1;31mCalibration error:\x1b[0m {e}")
             )
+            self.post_message(CalibrationScreen.CalibrationDone())
 
     @on(CalibrationDone)
     def on_done(self) -> None:
+        self.query_one("#calib-return", Button).display = True
+
+    @on(Button.Pressed, "#calib-return")
+    def on_return(self) -> None:
         self.app.pop_screen()
 
 
@@ -350,9 +384,11 @@ class RunScreen(Screen):
         if event.error:
             btn.label = "◀  RETURN  (session ended with error)"
             btn.variant = "error"
+            self.add_class("run-done-error")
         else:
             btn.label = "◀  RETURN TO MAIN"
             btn.variant = "success"
+            self.add_class("run-done-success")
         btn.disabled = False
 
     @on(Button.Pressed, "#action-btn")
@@ -387,6 +423,7 @@ class MainScreen(Screen):
             yield Button("RUN",       id="btn-run",       classes="main-btn")
             yield Button("ADVANCED",  id="btn-advanced",  classes="main-btn")
             yield Button("CALIBRATE", id="btn-calibrate", classes="main-btn")
+            yield Button("✕  QUIT",   id="btn-quit",      classes="main-btn")
 
     # ── RUN ──────────────────────────────────────────────────────────────
 
@@ -434,7 +471,13 @@ class MainScreen(Screen):
 
     @on(Button.Pressed, "#btn-calibrate")
     def on_calibrate(self) -> None:
-        self.app.push_screen(CalibrationScreen())
+        self.app.push_screen(CalibrationConfirmScreen())
+
+    # ── QUIT ─────────────────────────────────────────────────────────────
+
+    @on(Button.Pressed, "#btn-quit")
+    def on_quit(self) -> None:
+        self.app.exit()
 
 
 # ---------------------------------------------------------------------------
@@ -496,17 +539,19 @@ class LampyrApp(App):
         self.set_interval(60, self._check_calibration)
 
     def _check_calibration(self) -> None:
-        """Push CalibrationScreen whenever calibration has expired.
+        """Push CalibrationConfirmScreen whenever calibration has expired.
 
         Scans the full screen stack so that a NumpadModal sitting on top of a
-        CalibrationScreen does not trigger a second calibration push.
+        CalibrationScreen, or an already-open confirm screen, does not trigger
+        a second push.
         """
         expired = self.lampyr.config.get("rig.calibrated") < time.time() - 43200
-        already_calibrating = any(
-            isinstance(s, CalibrationScreen) for s in self.screen_stack
+        already_active = any(
+            isinstance(s, (CalibrationScreen, CalibrationConfirmScreen))
+            for s in self.screen_stack
         )
-        if expired and not already_calibrating:
-            self.push_screen(CalibrationScreen())
+        if expired and not already_active:
+            self.push_screen(CalibrationConfirmScreen())
 
 
 if __name__ == "__main__":

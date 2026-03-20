@@ -34,6 +34,7 @@ class RigManager(AbstractManager):
         self.connected = False
 
     def calibrate(self):
+        was_connected = self.connected
         if not self.connected:
             self.connect()
 
@@ -67,36 +68,40 @@ class RigManager(AbstractManager):
             dvol = (inputfloat('INPUT NEW WEIGHT (g):')-initial_value)/200
             self._output_func(f'Reward Size: {disp_size} produces {str(dvol)[:10]} ml reward')
             return dvol
-        
-        est_sipp = None
-        while True:
-            self._output_func('\nBEGINING CALIBRATION')
-            if est_sipp is None:
-                try:
-                    est_sipp = int(self.config.get('rig.sipper_calib'))
-                except:
+
+        try:
+            est_sipp = None
+            while True:
+                self._output_func('\nBEGINING CALIBRATION')
+                if est_sipp is None:
+                    try:
+                        est_sipp = int(self.config.get('rig.sipper_calib'))
+                    except:
+                        est_sipp = 10000
+                if est_sipp <= 6000:
                     est_sipp = 10000
-            if est_sipp <= 6000:
-                est_sipp = 10000
-            dsizes = [int(est_sipp*(2/3)), est_sipp, int(est_sipp*1.5)]
-            dvols = []
-            for disp_size in dsizes:
-                dvol = calib_disp(disp_size)
-                dvols.append(dvol)
-            slope, coeff, r2 = linreg(dsizes, dvols)
-            if r2 < 0.9:
-                self._output_func('Failed to produce linear regression. Repeating Calibration.')
-                continue
-            est_sipp = int((0.005 - coeff) / slope)
-            self._output_func(f'Estimated correct reward size is {est_sipp}')
-            self._output_func('Beginning dispenser test...')
-            dvol = calib_disp(est_sipp)
-            if abs(0.005 - dvol) < 0.0005:
-                break
-            else:
-                self._output_func('Calibration failed. Repeating calibration.')
-        self._output_func('Calibration success')
-        self._output_func(f'Rig reward size is set to {est_sipp}')
-        self.config.set('rig.sipper_calib', est_sipp)
-        self.config.set('rig.calibrated', round(time.time()))
+                dsizes = [int(est_sipp*(2/3)), est_sipp, int(est_sipp*1.5)]
+                dvols = []
+                for disp_size in dsizes:
+                    dvol = calib_disp(disp_size)
+                    dvols.append(dvol)
+                slope, coeff, r2 = linreg(dsizes, dvols)
+                if r2 < 0.9:
+                    self._output_func('Failed to produce linear regression. Repeating Calibration.')
+                    continue
+                est_sipp = int((0.005 - coeff) / slope)
+                self._output_func(f'Estimated correct reward size is {est_sipp}')
+                self._output_func('Beginning dispenser test...')
+                dvol = calib_disp(est_sipp)
+                if abs(0.005 - dvol) < 0.0005:
+                    break
+                else:
+                    self._output_func('Calibration failed. Repeating calibration.')
+            self._output_func('Calibration success')
+            self._output_func(f'Rig reward size is set to {est_sipp}')
+            self.config.set('rig.sipper_calib', est_sipp)
+            self.config.set('rig.calibrated', round(time.time()))
+        finally:
+            if not was_connected:
+                self.disconnect()
 

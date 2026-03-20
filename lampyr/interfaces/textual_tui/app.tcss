@@ -125,6 +125,30 @@ NumpadModal {
     color: black;
 }
 
+/* ── Calibration Confirm Screen ─────────────────────────── */
+CalibrationConfirmScreen {
+    background: yellow;
+    padding: 1 2;
+    align: center middle;
+}
+
+#confirm-yes {
+    width: 100%;
+    min-height: 7;
+    margin-bottom: 2;
+    background: #007700;
+    color: white;
+    text-style: bold;
+}
+
+#confirm-no {
+    width: 100%;
+    min-height: 7;
+    background: #333333;
+    color: white;
+    text-style: bold;
+}
+
 /* ── Calibration Screen ─────────────────────────────────── */
 CalibrationScreen {
     background: yellow;
@@ -154,6 +178,15 @@ CalibrationScreen {
     color: black;
     border: tall black;
     height: 1fr;
+}
+
+#calib-return {
+    width: 100%;
+    min-height: 5;
+    margin-top: 1;
+    background: #007700;
+    color: white;
+    text-style: bold;
 }
 
 /* ── Main Screen ────────────────────────────────────────── */
@@ -196,6 +229,12 @@ MainScreen {
     color: black;
 }
 
+#btn-quit {
+    background: #222222;
+    color: #888888;
+    min-height: 3;
+}
+
 /* ── Behavior Select Screen ─────────────────────────────── */
 BehaviorSelectScreen {
     padding: 1 2;
@@ -225,6 +264,14 @@ BehaviorSelectScreen {
 RunScreen {
     background: black;
     padding: 1 2;
+}
+
+RunScreen.run-done-success {
+    background: #006600;
+}
+
+RunScreen.run-done-error {
+    background: #aa0000;
 }
 
 #run-output {
