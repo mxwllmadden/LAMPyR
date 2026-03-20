@@ -262,3 +262,16 @@ def run(lampyr : Lampyr, behavior, **kwargs):
     except actions.Abort:
         return
     lampyr.run(behavior, **kwargs)
+
+@cli.command()
+def go():
+    """Launch the Lampyr TUI."""
+    import sys
+    if sys.platform == "win32":
+        import ctypes
+        KEYEVENTF_KEYUP = 0x0002
+        VK_F11 = 0x7A
+        ctypes.windll.user32.keybd_event(VK_F11, 0, 0, 0)           # F11 down
+        ctypes.windll.user32.keybd_event(VK_F11, 0, KEYEVENTF_KEYUP, 0)  # F11 up
+    from lampyr.interfaces.textual_tui.app import LampyrApp
+    LampyrApp().run()

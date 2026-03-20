@@ -62,10 +62,15 @@ class Lampyr:
             self._output_func('\nAborted by user!\n')
             stopcodes.append('user intervention')
         except Exception as error:
-            traceback.print_exc()
+            self._output_func(traceback.format_exc())
         finally:
             self._output_func(behav.session)
             stopcodes += behav.session.evaluatestopconditions()
+            if getattr(self, '_user_aborted', False):
+                stopcodes.append('user intervention')
+                self._user_aborted = False
+            if not stopcodes:
+                stopcodes.append('finished task')
             rname = self.config.get('rig.name')
             mid = self.mouse.mouseid
             self.notificationmanager.send_notification(

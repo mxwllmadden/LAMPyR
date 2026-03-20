@@ -48,7 +48,7 @@ class RigManager(AbstractManager):
 
         def inputfloat(prompt):
             while True:
-                val = input(prompt)
+                val = self._input_func(prompt)
                 try:
                     number = float(val)
                     break

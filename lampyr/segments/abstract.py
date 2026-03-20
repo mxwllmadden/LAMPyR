@@ -38,7 +38,7 @@ class Segment(ABC):
     session: Session = None
 
     # Input/Output functions
-    _output_func: Callable = field(default_factory=lambda: print)
+    _output_func: Callable = None  # inherited from lampyr; falls back to print if standalone
     _verbose: bool = False
 
     # Utilities
@@ -117,8 +117,8 @@ class Segment(ABC):
 
     def _log(self, prefix, message: str, output=True, style='\x1b[33m'):
         if output:
-            self._output_func(f'{style}[{prefix}][{
-                              self.name}] {message}\033[0m')
+            out = self._output_func if self._output_func is not None else print
+            out(f'{style}[{prefix}][{self.name}] {message}\033[0m')
         self.records.append((time.time(), prefix, message))
         return time.time()
 
