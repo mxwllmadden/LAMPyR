@@ -13,8 +13,7 @@ dependencies:
   - textual-dev
   - click
   - keyboard
+  - git
   - pip
-  - pip:
-    - art
   - h5py
   - requests

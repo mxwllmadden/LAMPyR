@@ -28,3 +28,6 @@ lampyr = "lampyr.interfaces.click_cli.app:cli"
 where = ["."]
 include = ["lampyr", "lampyr.*"]
 
+[tool.setuptools.package-data]
+"lampyr" = ["**/*.tcss", "**/*.css"]
+
