@@ -6,10 +6,11 @@ Created on Tue Jun 10 13:10:25 2025
 """
 import time
 import random
-from typing import Literal, List, Tuple
+from copy import deepcopy
+from typing import ClassVar, Literal, List, Tuple
 
 from lampyr.segments import Trial, Task
-from lampyr.segments.paradigm import Stage
+from lampyr.segments.paradigm import Stage, Paradigm
 from dataclasses import dataclass, field
 
 
@@ -96,7 +97,19 @@ class HabituationStage(Stage):
         del task
 
     def define_shaping(self):
-        pass
+        if self._paradigmdata is None or not session_valid(self):
+            return
+        p = self._paradigmdata['params']
+        shaping = self._paradigmdata['shaping']['habituation']
+        if self.session.merit >= p['hab_merit_threshold']:
+            shaping['consecutive_good'] = shaping.get('consecutive_good', 0) + 1
+            self.log_notice(f"Hab good session ({self.session.merit} merit). {shaping['consecutive_good']}/2")
+        else:
+            shaping['consecutive_good'] = 0
+            self.log_notice(f"Hab below threshold ({self.session.merit} merit). Resetting counter.")
+        if shaping['consecutive_good'] >= 2:
+            self.mouse.paradigm_stage[self.paradigm_tag] = 'AnyWheel'
+            self.log_notice("Advancing: Habituation → AnyWheel")
 
 
 @dataclass
@@ -322,6 +335,15 @@ class BanditTask(Task):
         del trial
 
 
+def session_valid(stage, min_duration_min: float = 40.0) -> bool:
+    """Returns False (and logs) if session was too short to count for shaping."""
+    dur = stage.session.duration
+    if dur is None or dur < min_duration_min:
+        stage.log_notice(f'Session too short ({round(dur, 1) if dur is not None else None} min < {min_duration_min} min). Shaping skipped.')
+        return False
+    return True
+
+
 def report_count(triallist, segmentlist, report):
     reportcounts = {}
     for trial_id in triallist:
@@ -345,21 +367,33 @@ class ResponseAbstractStage(Stage):
     def define_shaping(self):
         self.sessionsummary()
 
+    def _compute_sb_metric(self):
+        """Returns (Right - Left) / (Right + Left), or None if no directional responses."""
+        trials = []
+        for child_id in self.subdata:
+            trials.extend(self.session.search(root=child_id, slug='BanditTrial', type='Trial'))
+        counts = report_count(trials, self.session.segments, 'response')
+        resp_r = counts.get('Right', 0)
+        resp_l = counts.get('Left', 0)
+        if resp_r + resp_l == 0:
+            return None
+        return (resp_r - resp_l) / (resp_l + resp_r)
+
     def sessionsummary(self):
+        """Log response counts and side bias. Returns sb_metric (float) or None."""
         trials = []
         for child_id in self.subdata:
             trials.extend(self.session.search(root=child_id, slug='BanditTrial', type='Trial'))
         responsecounts = report_count(trials, self.session.segments, 'response')
         for resp, num in responsecounts.items():
             self.log_notice(f'Detected {num} {resp} responses.')
-        resp_r = responsecounts.get('Right', 0)
-        resp_l = responsecounts.get('Left', 0)
-        if resp_r + resp_l == 0:
+        sb_metric = self._compute_sb_metric()
+        if sb_metric is None:
             self.log_notice('Sidebias could not be calculated due to no responses.')
         else:
-            sb_metric = (resp_r - resp_l) / (resp_l + resp_r)
             sb_perc = (sb_metric * 50) + 50
             self.log_notice(f'Sidebias was: {round(sb_metric, 2)} ({round(sb_perc)}% Right)')
+        return sb_metric
 
 
 @dataclass
@@ -377,6 +411,22 @@ class AnyWheelStage(ResponseAbstractStage):
         task.run()
         del task
 
+    def define_shaping(self):
+        super().define_shaping()
+        if self._paradigmdata is None or not session_valid(self):
+            return
+        p = self._paradigmdata['params']
+        shaping = self._paradigmdata['shaping']['anywheel']
+        if self.session.participation >= p['anywheel_participation_threshold']:
+            shaping['consecutive_good'] = shaping.get('consecutive_good', 0) + 1
+            self.log_notice(f"AnyWheel good session ({self.session.participation} participation). {shaping['consecutive_good']}/{p['anywheel_consecutive']}")
+        else:
+            shaping['consecutive_good'] = 0
+            self.log_notice(f"AnyWheel below threshold ({self.session.participation} participation). Resetting counter.")
+        if shaping['consecutive_good'] >= p['anywheel_consecutive']:
+            self.mouse.paradigm_stage[self.paradigm_tag] = 'AltWheel'
+            self.log_notice("Advancing: AnyWheel → AltWheel")
+
 
 @dataclass
 class AltWheelStage(ResponseAbstractStage):
@@ -386,9 +436,52 @@ class AltWheelStage(ResponseAbstractStage):
         task = BanditTask(parent=self,
                           reward_prob_target=100,
                           reward_prob_offtarget=0,
-                          rescue_trial_enabled=True)
+                          rescue_trial_enabled=True,
+                          reward_delay_s=0)
         task.run()
         del task
+
+    def define_shaping(self):
+        sb = self.sessionsummary()
+        if self._paradigmdata is None or not session_valid(self):
+            return
+        if sb is None:
+            self.log_notice('Cannot shape thresholds: no responses.')
+            return
+
+        p = self._paradigmdata['params']
+        aw = self._paradigmdata['shaping']['altwheel']
+        phase = aw['phase']
+
+        if phase == 'complete':
+            return  # NEVER adjust once complete
+
+        if phase == 'correction':
+            if abs(sb) < p['equalize_threshold']:
+                aw['consecutive_equalized'] = aw.get('consecutive_equalized', 0) + 1
+                self.log_notice(f"Equalized ({aw['consecutive_equalized']}/{p['equalize_consecutive']})")
+                if aw['consecutive_equalized'] >= p['equalize_consecutive']:
+                    aw['phase'] = 'return'
+                    self.log_notice('Threshold correction complete → entering return phase.')
+            else:
+                aw['consecutive_equalized'] = 0
+                if sb > 0:  # right-biased: make right harder, left easier
+                    aw['right_threshold'] += p['correction_rate']
+                    aw['left_threshold'] = max(1, aw['left_threshold'] - p['correction_rate'])
+                else:       # left-biased: make left harder, right easier
+                    aw['left_threshold'] += p['correction_rate']
+                    aw['right_threshold'] = max(1, aw['right_threshold'] - p['correction_rate'])
+                self.log_notice(f"Adjusted thresholds → L:{aw['left_threshold']}° R:{aw['right_threshold']}°")
+
+        elif phase == 'return':
+            N = p['threshold_normal']
+            for side in ('left_threshold', 'right_threshold'):
+                v = aw[side]
+                aw[side] = min(N, v + p['return_rate']) if v < N else max(N, v - p['return_rate'])
+            self.log_notice(f"Returning thresholds → L:{aw['left_threshold']}° R:{aw['right_threshold']}°")
+            if aw['left_threshold'] == N and aw['right_threshold'] == N:
+                aw['phase'] = 'complete'
+                self.log_notice('Thresholds fully normalized. AltWheel shaping complete.')
 
 
 @dataclass
@@ -428,6 +521,131 @@ class BanditEndStage(ResponseAbstractStage):
                           rescue_trial_enabled=False)
         task.run()
         del task
+
+
+@dataclass
+class AltWheelDelayStage(ResponseAbstractStage):
+    slug: str = 'AltWheelDelay'
+
+    def define_task(self):
+        task = BanditTask(parent=self,
+                          reward_prob_target=100,
+                          reward_prob_offtarget=0,
+                          rescue_trial_enabled=True,
+                          reward_delay_s=0)  # overridden by BanditParadigm at runtime
+        task.run()
+        del task
+
+    def define_shaping(self):
+        self.sessionsummary()
+        if self._paradigmdata is None or not session_valid(self):
+            return
+        p = self._paradigmdata['params']
+        shaping = self._paradigmdata['shaping']['reward_delay']
+        delay_steps = p['delay_steps']
+        step = shaping['current_step']
+        if self.session.merit >= p['delay_merit_threshold'] and step < len(delay_steps) - 1:
+            shaping['current_step'] += 1
+            new_delay = delay_steps[shaping['current_step']]
+            self.log_notice(f"Merit {self.session.merit} >= {p['delay_merit_threshold']}. Advancing delay → {new_delay}s")
+            if shaping['current_step'] == len(delay_steps) - 1:
+                self.mouse.paradigm_stage[self.paradigm_tag] = 'BanditTraining'
+                self.log_notice('Delay training complete. Advancing → BanditTraining.')
+        else:
+            self.log_notice(f"Merit {self.session.merit}. Delay stays at {delay_steps[step]}s")
+
+
+@dataclass
+class BanditParadigm(Paradigm):
+    slug: str = 'bandit'
+    paradigm_tag: str = 'BanditParadigm'
+    DEFAULT_PROPERTIES: ClassVar[dict] = {
+        'shaping': {
+            'habituation': {'consecutive_good': 0},
+            'anywheel':    {'consecutive_good': 0},
+            'altwheel': {
+                'phase': 'correction',
+                'left_threshold': 15,
+                'right_threshold': 15,
+                'consecutive_equalized': 0,
+            },
+            'reward_delay': {'current_step': 0},
+        }
+    }
+    DELAY_STEPS: ClassVar[list] = [0, 0.1, 0.25, 0.5, 0.75, 1.0]
+
+    # Shaping rate parameters — dataclass fields, overridable per-instance
+    threshold_normal: int = 15
+    correction_rate: int = 5
+    return_rate: int = 2
+    equalize_threshold: float = 0.2
+    equalize_consecutive: int = 2
+    hab_merit_threshold: int = 150
+    anywheel_participation_threshold: int = 150
+    anywheel_consecutive: int = 2
+    delay_merit_threshold: int = 150
+
+    def execute(self):
+        super().execute()
+        self._init_defaults()
+        self._store_params()
+        self._apply_shaping_overrides()
+        self._run_stage()
+
+    def _init_defaults(self):
+        self._deep_setdefaults(self._paradigmdata, self.DEFAULT_PROPERTIES)
+
+    def _deep_setdefaults(self, target, defaults):
+        for k, v in defaults.items():
+            if k not in target:
+                target[k] = deepcopy(v)
+            elif isinstance(v, dict) and isinstance(target[k], dict):
+                self._deep_setdefaults(target[k], v)
+
+    def _store_params(self):
+        self._paradigmdata['params'] = {
+            'threshold_normal': self.threshold_normal,
+            'correction_rate': self.correction_rate,
+            'return_rate': self.return_rate,
+            'equalize_threshold': self.equalize_threshold,
+            'equalize_consecutive': self.equalize_consecutive,
+            'hab_merit_threshold': self.hab_merit_threshold,
+            'anywheel_participation_threshold': self.anywheel_participation_threshold,
+            'anywheel_consecutive': self.anywheel_consecutive,
+            'delay_merit_threshold': self.delay_merit_threshold,
+            'delay_steps': self.DELAY_STEPS,
+        }
+
+    def _apply_shaping_overrides(self):
+        aw = self._paradigmdata['shaping']['altwheel']
+        step = self._paradigmdata['shaping']['reward_delay']['current_step']
+        delay = self.DELAY_STEPS[step]
+        overrides = {
+            'trial_responsethresholds_deg': {
+                'Left':  aw['left_threshold'],
+                'Right': aw['right_threshold'],
+            },
+            'reward_delay_s': delay,
+        }
+        self.mouse.mouse_behav_param_overrides['BanditTrial'] = overrides
+        self.log_notice(f"BanditTrial overrides: thresholds L:{aw['left_threshold']}° "
+                        f"R:{aw['right_threshold']}°, delay {delay}s")
+
+    def _run_stage(self):
+        stage_map = {
+            'Habituation':    HabituationStage,
+            'AnyWheel':       AnyWheelStage,
+            'BanditTraining': BanditTrainingStage,
+        }
+        current = self.mouse.paradigm_stage.get(self.paradigm_tag, 'Habituation')
+        if current == 'AltWheel':
+            aw_phase = self._paradigmdata['shaping']['altwheel']['phase']
+            stage_cls = AltWheelStage if aw_phase != 'complete' else AltWheelDelayStage
+        else:
+            stage_cls = stage_map[current]
+        self.log_notice(f"Running stage: {stage_cls.__name__} (current_stage='{current}')")
+        stage = stage_cls(parent=self)
+        stage.run()
 
 
 if __name__ == '__main__':

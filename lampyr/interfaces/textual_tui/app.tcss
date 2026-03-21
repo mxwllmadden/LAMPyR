@@ -260,6 +260,45 @@ BehaviorSelectScreen {
     margin-bottom: 1;
 }
 
+/* ── Task Param Screen ──────────────────────────────────── */
+
+#taskparam-header {
+    width: 100%;
+    text-align: center;
+    text-style: bold;
+    background: #1e3a5f;
+    color: white;
+    padding: 1;
+    margin-bottom: 1;
+}
+
+#taskparam-list {
+    height: 1fr;
+}
+
+.taskparam-btn {
+    width: 100%;
+    min-height: 3;
+    margin-bottom: 1;
+}
+
+#taskparam-actions {
+    height: auto;
+    layout: horizontal;
+    padding: 1 0 0 0;
+}
+
+#taskparam-run {
+    width: 1fr;
+    min-height: 4;
+    margin-right: 1;
+}
+
+#taskparam-back {
+    width: 1fr;
+    min-height: 4;
+}
+
 /* ── Run Screen ─────────────────────────────────────────── */
 RunScreen {
     background: black;

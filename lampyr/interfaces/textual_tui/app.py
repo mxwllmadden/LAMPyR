@@ -22,6 +22,7 @@ from textual.widgets import Button, Footer, Label, RichLog
 
 from lampyr import Lampyr
 from lampyr import actions
+from lampyr.segments.behavior import Task
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +89,7 @@ class NumpadModal(ModalScreen):
     """Touch-friendly numpad modal.
 
     mode='float'  →  decimal point key; validates as float on OK
+    mode='int'    →  no decimal key; validates as int on OK
     mode='id'     →  dash key; validates as non-empty string on OK
     """
 
@@ -171,6 +173,15 @@ class NumpadModal(ModalScreen):
                     self._show_confirm(val)
                 except (ValueError, TypeError):
                     self.query_one("#numpad-display", Label).update("invalid!")
+            elif self._mode == "int":
+                if val == "-":
+                    self._show_confirm(val)
+                else:
+                    try:
+                        int(val)
+                        self._show_confirm(val)
+                    except (ValueError, TypeError):
+                        self.query_one("#numpad-display", Label).update("invalid!")
             else:
                 if val:
                     self._show_confirm(val)
@@ -181,11 +192,12 @@ class NumpadModal(ModalScreen):
         if btn_id == "nback":
             self._current = self._current[:-1]
         elif btn_id == "nextra":
-            extra = "." if self._mode == "float" else "-"
-            if self._mode == "float" and "." in self._current:
-                pass
-            else:
-                self._current += extra
+            if self._mode == "float" and "." not in self._current:
+                self._current += "."
+            elif self._mode == "id":
+                self._current += "-"
+            elif self._mode == "int" and self._current == "":
+                self._current = "-"
         else:
             self._current += str(event.button.label)
 
@@ -290,10 +302,9 @@ class BehaviorSelectScreen(Screen):
             f"Select Behavior  ·  Mouse: {self._mouseid}",
             id="behsel-header",
         )
-        # Filter out primitive/base classes that live in lampyr.segments.*
         user_behaviors = [
             name for name, cls in self.app.lampyr.behaviors.items()
-            if not cls.__module__.startswith("lampyr.segments")
+            if issubclass(cls, Task) and cls is not Task
         ]
         with VerticalScroll(id="behavior-list"):
             for name in user_behaviors:
@@ -302,8 +313,82 @@ class BehaviorSelectScreen(Screen):
     @on(Button.Pressed, ".behavior-btn")
     def on_behavior(self, event: Button.Pressed) -> None:
         behavior_name = str(event.button.label)
-        # switch_screen replaces this screen so RunScreen.on_done pops to MainScreen
-        self.app.switch_screen(RunScreen(self._mouseid, behavior_name))
+        self.app.push_screen(TaskParamScreen(self._mouseid, behavior_name))
+
+
+# ---------------------------------------------------------------------------
+# TaskParamScreen — configure session limits before running a task
+# ---------------------------------------------------------------------------
+
+_SESSION_PARAMS = [
+    ("reward_limit",          "Reward Limit"),
+    ("duration_limit",        "Duration (min)"),
+    ("trial_limit",           "Trial Limit"),
+    ("merit_limit",           "Merit Limit"),
+    ("demerit_limit",         "Demerit Limit"),
+    ("participation_limit",   "Participation Limit"),
+    ("abstention_limit",      "Abstention Limit"),
+    ("serial_abstention_limit", "Serial Abstention Limit"),
+]
+
+
+class TaskParamScreen(Screen):
+
+    def __init__(self, mouseid: str, behavior: str):
+        super().__init__()
+        self._mouseid = mouseid
+        self._behavior = behavior
+        self._params: dict = {
+            "reward_limit": 200,
+            "duration_limit": 60,
+            "serial_abstention_limit": 15,
+        }
+
+    def compose(self) -> ComposeResult:
+        yield Label(
+            f"Configure  ·  {self._behavior}  ·  Mouse: {self._mouseid}",
+            id="taskparam-header",
+        )
+        with VerticalScroll(id="taskparam-list"):
+            for param, label in _SESSION_PARAMS:
+                yield Button(
+                    self._param_btn_label(param, label),
+                    id=f"param-{param}",
+                    classes="taskparam-btn",
+                )
+        with Container(id="taskparam-actions"):
+            yield Button("▶  RUN",  id="taskparam-run",  variant="success")
+            yield Button("◀  BACK", id="taskparam-back")
+
+    def _param_btn_label(self, param: str, label: str) -> str:
+        val = self._params.get(param)
+        val_str = f"[ {val} ]" if val is not None else "[  —  ]"
+        return f"{label}  {val_str}"
+
+    @on(Button.Pressed, ".taskparam-btn")
+    def on_param_btn(self, event: Button.Pressed) -> None:
+        param = event.button.id.removeprefix("param-")
+        label = next(lbl for p, lbl in _SESSION_PARAMS if p == param)
+        self.app.push_screen(
+            NumpadModal(f"Set {label}:", mode="int"),
+            lambda val, p=param, lbl=label: self._on_param_set(p, lbl, val),
+        )
+
+    def _on_param_set(self, param: str, label: str, val: str | None) -> None:
+        if val is not None:
+            if val == "-":
+                self._params.pop(param, None)
+            else:
+                self._params[param] = int(val)
+            self.query_one(f"#param-{param}", Button).label = self._param_btn_label(param, label)
+
+    @on(Button.Pressed, "#taskparam-run")
+    def on_run(self) -> None:
+        self.app.switch_screen(RunScreen(self._mouseid, self._behavior, session_params=self._params))
+
+    @on(Button.Pressed, "#taskparam-back")
+    def on_back(self) -> None:
+        self.app.pop_screen()
 
 
 # ---------------------------------------------------------------------------
@@ -322,10 +407,11 @@ class RunScreen(Screen):
             super().__init__()
             self.text = text
 
-    def __init__(self, mouseid: str, behavior: str):
+    def __init__(self, mouseid: str, behavior: str, session_params: dict = None):
         super().__init__()
         self._mouseid = mouseid
         self._behavior = behavior
+        self._session_params = session_params or {}
         self._thread: threading.Thread | None = None
 
     def compose(self) -> ComposeResult:
@@ -377,7 +463,7 @@ class RunScreen(Screen):
             self.app.lampyr.rigmanager.connect()
 
             out(f"Starting behavior: {self._behavior}")
-            self.app.lampyr.run(self._behavior)
+            self.app.lampyr.run(self._behavior, **self._session_params)
 
         except actions.Abort:
             out("\x1b[1;31mERROR: Rig start aborted (unconfigured or uncalibrated).\x1b[0m")

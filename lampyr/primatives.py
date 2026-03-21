@@ -25,6 +25,7 @@ class Mouse:
     mouseid: str = '014-000'
     mouse_behav_param_overrides: dict = field(default_factory=dict)
     paradigm: str = None
+    paradigm_stage: dict = field(default_factory=dict)
     properties: dict = field(default_factory=dict)
     history: List = field(default_factory=list)
 

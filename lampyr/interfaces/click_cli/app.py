@@ -167,6 +167,46 @@ def mouse_run(lampyr, mouseid, behavior, **kwargs):
         return
     lampyr.run(behavior, **kwargs)
 
+@mouse.command(name='paradigm')
+@click.argument('mouseid')
+@click.argument('paradigm_name', required=False)
+@click.option('--stage', '-s', type=str, default=None, help='Set the current stage for this paradigm')
+@click.pass_obj
+def mouse_paradigm(lampyr, mouseid, paradigm_name, stage):
+    try:
+        lampyr.mousemanager.load(mouseid)
+    except Exception as e:
+        click.echo(f'Failed to load mouse: {e}')
+        return
+
+    if paradigm_name is None:
+        # Dump current paradigm info
+        m = lampyr.mouse
+        click.echo(f'\nParadigm:  {m.paradigm or "(none)"}')
+        click.echo(f'Stages:    {m.paradigm_stage or "(none)"}')
+        pdata = m.properties
+        if pdata:
+            click.echo('Paradigm data:')
+            import json
+            click.echo(json.dumps(pdata, indent=2))
+        else:
+            click.echo('Paradigm data: (none)')
+        return
+
+    # Set paradigm
+    if paradigm_name not in lampyr.behaviors:
+        click.echo(f'Failed: {paradigm_name} is not a valid behavior.')
+        return
+    lampyr.mouse.paradigm = paradigm_name
+    click.echo(f'Set {mouseid} paradigm → {paradigm_name}')
+
+    if stage is not None:
+        lampyr.mouse.paradigm_stage[paradigm_name] = stage
+        click.echo(f'Set {mouseid} stage → {stage} (paradigm: {paradigm_name})')
+
+    lampyr.mousemanager.save()
+
+
 @cli.group()
 def user():
     pass
