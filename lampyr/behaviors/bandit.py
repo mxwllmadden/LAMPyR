@@ -399,6 +399,10 @@ class ResponseAbstractStage(Stage):
 @dataclass
 class AnyWheelStage(ResponseAbstractStage):
     slug: str = 'AnyWheel'
+    
+    def define_sessionparams(self):
+        super().define_sessionparams()
+        self.set_sessionparam('duration_min', 40)
 
     def define_task(self):
         task = BanditTask(parent=self,
@@ -407,6 +411,8 @@ class AnyWheelStage(ResponseAbstractStage):
                           reward_prob_offtarget=0,
                           reward_delay_s=0,
                           rescue_trial_enabled=True,
+                          rescue_threshold=20,
+                          rescue_cooldown=20,
                           taskblocks_enabled=False)
         task.run()
         del task
