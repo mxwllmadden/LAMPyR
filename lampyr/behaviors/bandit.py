@@ -346,7 +346,7 @@ class ResponseAbstractStage(Stage):
         self.sessionsummary()
 
     def sessionsummary(self):
-        trials = self.session.searchself(self, slug='BanditTrial', type='Trial')
+        trials = self.session.search(slug='BanditTrial', type='Trial')
         responsecounts = report_count(trials, self.session.segments, 'response')
         for resp, num in responsecounts.items():
             self.log_notice(f'Detected {num} {resp} responses.')
