@@ -120,7 +120,7 @@ def mouse_create(lampyr : Lampyr, mouseid, force, **kwargs):
 @click.pass_obj
 def mouse_list(lampyr):
     actions.printheader('MICE')
-    l, _ = lampyr.mousemanager.list()
+    l = lampyr.mousemanager.list()
     for m in l:
         click.echo(m)
 

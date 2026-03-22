@@ -335,7 +335,7 @@ class BanditTask(Task):
         del trial
 
 
-def session_valid(stage, min_duration_min: float = 40.0) -> bool:
+def session_valid(stage, min_duration_min: float = 20.0) -> bool:
     """Returns False (and logs) if session was too short to count for shaping."""
     dur = stage.session.duration
     if dur is None or dur < min_duration_min:
