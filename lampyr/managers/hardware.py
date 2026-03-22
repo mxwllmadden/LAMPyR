@@ -57,17 +57,19 @@ class RigManager(AbstractManager):
                     self._output_func("Please enter a valid number.")
             return number
 
-        def calib_disp(disp_size):
+        def calib_disp(disp_size, initial_value=None):
             disp_size = int(disp_size)
             self.rig.reward.setsize(disp_size)
-            initial_value = inputfloat('INPUT WEIGHT (g): ')
+            if initial_value is None:
+                initial_value = inputfloat('INPUT WEIGHT (g): ')
             time.sleep(0.1)
-            for i in range(200):
+            for i in range(400):
                 self.rig.reward.give()
                 time.sleep(0.4)
-            dvol = (inputfloat('INPUT NEW WEIGHT (g):')-initial_value)/200
+            new_value = inputfloat('INPUT NEW WEIGHT (g):')
+            dvol = (new_value - initial_value) / 400
             self._output_func(f'Reward Size: {disp_size} produces {str(dvol)[:10]} ml reward')
-            return dvol
+            return dvol, new_value
 
         try:
             est_sipp = None
@@ -82,8 +84,9 @@ class RigManager(AbstractManager):
                     est_sipp = 10000
                 dsizes = [int(est_sipp*(2/3)), est_sipp, int(est_sipp*1.5)]
                 dvols = []
+                next_initial = None
                 for disp_size in dsizes:
-                    dvol = calib_disp(disp_size)
+                    dvol, next_initial = calib_disp(disp_size, initial_value=next_initial)
                     dvols.append(dvol)
                 slope, coeff, r2 = linreg(dsizes, dvols)
                 if r2 < 0.9:
@@ -92,7 +95,7 @@ class RigManager(AbstractManager):
                 est_sipp = int((0.005 - coeff) / slope)
                 self._output_func(f'Estimated correct reward size is {est_sipp}')
                 self._output_func('Beginning dispenser test...')
-                dvol = calib_disp(est_sipp)
+                dvol, _ = calib_disp(est_sipp, initial_value=next_initial)
                 if abs(0.005 - dvol) < 0.0005:
                     break
                 else:
