@@ -477,6 +477,8 @@ class AltWheelStage(ResponseAbstractStage):
                 else:       # left-biased: make left harder, right easier
                     aw['left_threshold'] += p['correction_rate']
                     aw['right_threshold'] = max(1, aw['right_threshold'] - p['correction_rate'])
+                for side in ('left_threshold', 'right_threshold'):
+                    aw[side] = max(5, min(aw[side],40))
                 self.log_notice(f"Adjusted thresholds → L:{aw['left_threshold']}° R:{aw['right_threshold']}°")
 
         elif phase == 'return':
