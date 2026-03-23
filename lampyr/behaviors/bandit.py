@@ -361,7 +361,8 @@ class ResponseAbstractStage(Stage):
 
     def define_sessionparams(self):
         self.set_sessionparam('duration_limit', 60)
-        self.set_sessionparam('serial_abstention_limit', 15)
+        self.set_sessionparam('duration_min', 20)
+        self.set_sessionparam('serial_abstention_limit', 30)
         self.set_sessionparam('reward_limit', 200)
 
     def define_shaping(self):
@@ -500,22 +501,6 @@ class BanditTrainingStage(ResponseAbstractStage):
     def define_task(self):
         task = BanditTask(parent=self,
                           rescue_trial_enabled=True)
-        task.run()
-        self._task = task
-
-
-@dataclass
-class RandomBanditStage(ResponseAbstractStage):
-    slug: str = 'RandomBandit'
-    _task: object = None
-
-    def define_task(self):
-        task = BanditTask(parent=self,
-                          rescue_trial_enabled=False,
-                          taskblocks_blockcounttype='RewardedMerit',
-                          taskblocks_consecutivecounttype='Merit',
-                          taskblocks_minimumconsecutivecount=3,
-                          random_target_probs_enabled=True)
         task.run()
         self._task = task
 
