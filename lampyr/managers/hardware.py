@@ -63,11 +63,11 @@ class RigManager(AbstractManager):
             if initial_value is None:
                 initial_value = inputfloat('INPUT WEIGHT (g): ')
             time.sleep(0.1)
-            for i in range(400):
+            for i in range(200):
                 self.rig.reward.give()
-                time.sleep(0.4)
+                time.sleep(0.3)
             new_value = inputfloat('INPUT NEW WEIGHT (g):')
-            dvol = (new_value - initial_value) / 400
+            dvol = (new_value - initial_value) / 200
             self._output_func(f'Reward Size: {disp_size} produces {str(dvol)[:10]} ml reward')
             return dvol, new_value
 
