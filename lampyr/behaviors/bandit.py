@@ -228,8 +228,8 @@ class BanditTask(Task):
     reward_delay_s: float = 1
     rescue_trial_enabled: bool = False
     rescue_limit: int = 3
-    rescue_cooldown: int = 2
-    rescue_threshold: int = 12
+    rescue_cooldown: int = 20
+    rescue_threshold: int = 15
     taskblocks_enabled: bool = True
     taskblocks_sizerange: tuple = (6, 15)
     taskblocks_blockcounttype: Literal['Reward', 'Merit', 'RewardedMerit'] = 'Reward'
@@ -412,8 +412,6 @@ class AnyWheelStage(ResponseAbstractStage):
                           reward_prob_offtarget=0,
                           reward_delay_s=0,
                           rescue_trial_enabled=True,
-                          rescue_threshold=20,
-                          rescue_cooldown=20,
                           taskblocks_enabled=False)
         task.run()
         del task
