@@ -51,6 +51,7 @@ class Lampyr:
             raise RuntimeError(
                 'Segments cannot be run without an active rig')
             
+        self.datamanager._backupmice()
         self._createsession(**kwargs)
         behav = self.behaviors[segment_name](lampyr=self,
                                              _verbose=True
@@ -91,6 +92,7 @@ class Lampyr:
             self.datamanager.savesession()
         if self.mouse is not None:
             self.mousemanager.save() # Important that mouse is saved after session
+            self.datamanager._backupmice()
 
 
 if __name__ == '__main__':

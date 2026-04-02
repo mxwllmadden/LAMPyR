@@ -62,11 +62,17 @@ class RigManager(AbstractManager):
             self.rig.reward.setsize(disp_size)
             if initial_value is None:
                 initial_value = inputfloat('INPUT WEIGHT (g): ')
+                if initial_value == 0.0:
+                    self._output_func("Zero entered — restarting calibration cycle.")
+                    return None
             time.sleep(0.1)
             for i in range(200):
                 self.rig.reward.give()
                 time.sleep(0.3)
             new_value = inputfloat('INPUT NEW WEIGHT (g):')
+            if new_value == 0.0:
+                self._output_func("Zero entered — restarting calibration cycle.")
+                return None
             dvol = (new_value - initial_value) / 200
             self._output_func(f'Reward Size: {disp_size} produces {str(dvol)[:10]} ml reward')
             return dvol, new_value
@@ -85,9 +91,16 @@ class RigManager(AbstractManager):
                 dsizes = [int(est_sipp*(2/3)), est_sipp, int(est_sipp*1.5)]
                 dvols = []
                 next_initial = None
+                restart = False
                 for disp_size in dsizes:
-                    dvol, next_initial = calib_disp(disp_size, initial_value=next_initial)
+                    result = calib_disp(disp_size, initial_value=next_initial)
+                    if result is None:
+                        restart = True
+                        break
+                    dvol, next_initial = result
                     dvols.append(dvol)
+                if restart:
+                    continue
                 slope, coeff, r2 = linreg(dsizes, dvols)
                 if r2 < 0.9:
                     self._output_func('Failed to produce linear regression. Repeating Calibration.')
@@ -95,7 +108,10 @@ class RigManager(AbstractManager):
                 est_sipp = int((0.005 - coeff) / slope)
                 self._output_func(f'Estimated correct reward size is {est_sipp}')
                 self._output_func('Beginning dispenser test...')
-                dvol, _ = calib_disp(est_sipp, initial_value=next_initial)
+                result = calib_disp(est_sipp, initial_value=next_initial)
+                if result is None:
+                    continue
+                dvol, _ = result
                 if abs(0.005 - dvol) < 0.0005:
                     break
                 else:

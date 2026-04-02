@@ -571,7 +571,7 @@ class BanditParadigm(Paradigm):
     return_rate: int = 2
     equalize_threshold: float = 0.2
     equalize_consecutive: int = 2
-    hab_merit_threshold: int = 150
+    hab_merit_threshold: int = 140
     anywheel_participation_threshold: int = 150
     anywheel_consecutive: int = 2
     delay_merit_threshold: int = 150
