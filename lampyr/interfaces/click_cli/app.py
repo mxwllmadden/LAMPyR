@@ -119,10 +119,45 @@ def mouse_create(lampyr : Lampyr, mouseid, force, **kwargs):
 @mouse.command(name = 'list')
 @click.pass_obj
 def mouse_list(lampyr):
+    def _time_ago(ts):
+        delta = int(time.time() - ts)
+        if delta < 60:
+            return f"{delta}s ago"
+        elif delta < 3600:
+            return f"{delta // 60}m ago"
+        elif delta < 86400:
+            h = delta // 3600
+            m = (delta % 3600) // 60
+            return f"{h}h {m}m ago"
+        else:
+            d = delta // 86400
+            h = (delta % 86400) // 3600
+            return f"{d}d {h}h ago"
+
+    mids, _ = lampyr.datamanager.mouselist()
+    rows = []
+    for mid in mids:
+        mouse = lampyr.datamanager.loadmouse(mid)
+        paradigm = mouse.paradigm or 'none'
+        stage = mouse.paradigm_stage.get(mouse.paradigm, 'none') if mouse.paradigm else 'none'
+        if mouse.history:
+            last_entry = mouse.history[-1]
+            last = _time_ago(float(last_entry['starttime']))
+            merit = str(last_entry.get('merit', ''))
+            rewards = str(last_entry.get('rewards', ''))
+        else:
+            last, merit, rewards = 'never', '', ''
+        rows.append((mid, paradigm, stage, last, merit, rewards))
+
+    headers = ('NAME', 'PARADIGM', 'STAGE', 'LAST SESSION', 'MERIT', 'REWARDS')
+    widths = [max(len(h), max((len(r[i]) for r in rows), default=0))
+              for i, h in enumerate(headers)]
+
     actions.printheader('MICE')
-    l = lampyr.mousemanager.list()
-    for m in l:
-        click.echo(m)
+    click.echo('  '.join(h.ljust(widths[i]) for i, h in enumerate(headers)))
+    click.echo('  '.join('-' * w for w in widths))
+    for row in rows:
+        click.echo('  '.join(row[i].ljust(widths[i]) for i in range(len(headers))))
 
 @mouse.command(name = 'info')
 @click.argument('mouseid')

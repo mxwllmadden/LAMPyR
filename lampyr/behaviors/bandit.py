@@ -457,38 +457,52 @@ class AltWheelStage(ResponseAbstractStage):
         p = self._paradigmdata['params']
         aw = self._paradigmdata['shaping']['altwheel']
         phase = aw['phase']
+        score = aw.get('adjustment_score', 0)
 
         if phase == 'complete':
             return  # NEVER adjust once complete
 
+        N = p['threshold_normal']
+        max_adj = p['max_adjustment']
+
         if phase == 'correction':
-            if abs(sb) < p['equalize_threshold']:
+            prevailing = 1 if score > 0 else (-1 if score < 0 else 0)
+            against_prevailing = prevailing != 0 and (
+                (prevailing > 0 and sb < 0) or (prevailing < 0 and sb > 0)
+            )
+            is_equalized = abs(sb) < p['equalize_threshold'] or against_prevailing
+
+            if is_equalized:
                 aw['consecutive_equalized'] = aw.get('consecutive_equalized', 0) + 1
-                self.log_notice(f"Equalized ({aw['consecutive_equalized']}/{p['equalize_consecutive']})")
+                self.log_notice(
+                    f"Equalized ({aw['consecutive_equalized']}/{p['equalize_consecutive']})"
+                )
                 if aw['consecutive_equalized'] >= p['equalize_consecutive']:
                     aw['phase'] = 'return'
                     self.log_notice('Threshold correction complete → entering return phase.')
             else:
                 aw['consecutive_equalized'] = 0
-                if sb > 0:  # right-biased: make right harder, left easier
-                    aw['right_threshold'] += p['correction_rate']
-                    aw['left_threshold'] = max(1, aw['left_threshold'] - p['correction_rate'])
-                else:       # left-biased: make left harder, right easier
-                    aw['left_threshold'] += p['correction_rate']
-                    aw['right_threshold'] = max(1, aw['right_threshold'] - p['correction_rate'])
-                for side in ('left_threshold', 'right_threshold'):
-                    aw[side] = max(5, min(aw[side],40))
-                self.log_notice(f"Adjusted thresholds → L:{aw['left_threshold']}° R:{aw['right_threshold']}°")
+                if sb > 0:  # right-biased: increase score (makes right harder)
+                    new_score = min(max_adj, score + p['correction_rate'])
+                else:       # left-biased: decrease score (makes left harder)
+                    new_score = max(-max_adj, score - p['correction_rate'])
+                aw['adjustment_score'] = new_score
+                lt = max(5, min(40, N - new_score))
+                rt = max(5, min(40, N + new_score))
+                self.log_notice(f"Adjusted score → {new_score} (L:{lt}° R:{rt}°)")
 
         elif phase == 'return':
-            N = p['threshold_normal']
-            for side in ('left_threshold', 'right_threshold'):
-                v = aw[side]
-                aw[side] = min(N, v + p['return_rate']) if v < N else max(N, v - p['return_rate'])
-            self.log_notice(f"Returning thresholds → L:{aw['left_threshold']}° R:{aw['right_threshold']}°")
-            if aw['left_threshold'] == N and aw['right_threshold'] == N:
+            if score > 0:
+                score = max(0, score - p['return_rate'])
+            elif score < 0:
+                score = min(0, score + p['return_rate'])
+            aw['adjustment_score'] = score
+            lt = max(5, min(40, N - score))
+            rt = max(5, min(40, N + score))
+            self.log_notice(f"Returning score → {score} (L:{lt}° R:{rt}°)")
+            if score == 0:
                 aw['phase'] = 'complete'
-                self.log_notice('Thresholds fully normalized. AltWheel shaping complete.')
+                self.log_notice('Score fully normalized. AltWheel shaping complete.')
 
 
 @dataclass
@@ -556,8 +570,7 @@ class BanditParadigm(Paradigm):
             'anywheel':    {'consecutive_good': 0},
             'altwheel': {
                 'phase': 'correction',
-                'left_threshold': 15,
-                'right_threshold': 15,
+                'adjustment_score': 0,
                 'consecutive_equalized': 0,
             },
             'reward_delay': {'current_step': 0},
@@ -569,8 +582,9 @@ class BanditParadigm(Paradigm):
     threshold_normal: int = 15
     correction_rate: int = 5
     return_rate: int = 2
-    equalize_threshold: float = 0.2
+    equalize_threshold: float = 0.1
     equalize_consecutive: int = 2
+    max_adjustment: int = 25
     hab_merit_threshold: int = 140
     anywheel_participation_threshold: int = 150
     anywheel_consecutive: int = 2
@@ -584,7 +598,15 @@ class BanditParadigm(Paradigm):
         self._run_stage()
 
     def _init_defaults(self):
+        self._migrate_altwheel()
         self._deep_setdefaults(self._paradigmdata, self.DEFAULT_PROPERTIES)
+
+    def _migrate_altwheel(self):
+        aw = self._paradigmdata.get('shaping', {}).get('altwheel', {})
+        if 'right_threshold' in aw and 'adjustment_score' not in aw:
+            score = aw['right_threshold'] - self.threshold_normal
+            aw['adjustment_score'] = score
+            self.log_notice(f"Migrated altwheel thresholds → adjustment_score={score}")
 
     def _deep_setdefaults(self, target, defaults):
         for k, v in defaults.items():
@@ -600,6 +622,7 @@ class BanditParadigm(Paradigm):
             'return_rate': self.return_rate,
             'equalize_threshold': self.equalize_threshold,
             'equalize_consecutive': self.equalize_consecutive,
+            'max_adjustment': self.max_adjustment,
             'hab_merit_threshold': self.hab_merit_threshold,
             'anywheel_participation_threshold': self.anywheel_participation_threshold,
             'anywheel_consecutive': self.anywheel_consecutive,
@@ -611,16 +634,19 @@ class BanditParadigm(Paradigm):
         aw = self._paradigmdata['shaping']['altwheel']
         step = self._paradigmdata['shaping']['reward_delay']['current_step']
         delay = self.DELAY_STEPS[step]
+        score = aw.get('adjustment_score', 0)
+        N = self.threshold_normal
+        lt = max(5, min(40, N - score))
+        rt = max(5, min(40, N + score))
         overrides = {
             'trial_responsethresholds_deg': {
-                'Left':  aw['left_threshold'],
-                'Right': aw['right_threshold'],
+                'Left':  lt,
+                'Right': rt,
             },
             'reward_delay_s': delay,
         }
         self.mouse.mouse_behav_param_overrides['BanditTrial'] = overrides
-        self.log_notice(f"BanditTrial overrides: thresholds L:{aw['left_threshold']}° "
-                        f"R:{aw['right_threshold']}°, delay {delay}s")
+        self.log_notice(f"BanditTrial overrides: thresholds L:{lt}° R:{rt}° (score={score}), delay {delay}s")
 
     def _run_stage(self):
         stage_map = {
@@ -628,7 +654,7 @@ class BanditParadigm(Paradigm):
             'AnyWheel':       AnyWheelStage,
             'BanditTraining': BanditTrainingStage,
         }
-        current = self.mouse.paradigm_stage.get(self.paradigm_tag, 'Habituation')
+        current = self.mouse.paradigm_stage.setdefault(self.paradigm_tag, 'Habituation')
         if current == 'AltWheel':
             aw_phase = self._paradigmdata['shaping']['altwheel']['phase']
             stage_cls = AltWheelStage if aw_phase != 'complete' else AltWheelDelayStage
