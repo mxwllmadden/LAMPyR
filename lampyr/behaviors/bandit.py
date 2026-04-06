@@ -589,7 +589,7 @@ class BanditParadigm(Paradigm):
             'reward_delay': {'current_step': 0},
         }
     }
-    STAGES: ClassVar[list] = ['Habituation', 'AnyWheel', 'AltWheel', 'BanditTraining']
+    STAGES: ClassVar[list] = ['Habituation', 'AnyWheel', 'AltWheel', 'AltWheelDelay', 'BanditTraining']
     DELAY_STEPS: ClassVar[list] = [0, 0.1, 0.25, 0.5, 0.75, 1.0]
 
     # Shaping rate parameters — dataclass fields, overridable per-instance
@@ -650,14 +650,12 @@ class BanditParadigm(Paradigm):
         stage_map = {
             'Habituation':    HabituationStage,
             'AnyWheel':       AnyWheelStage,
+            'AltWheel':       AltWheelStage,
+            'AltWheelDelay':  AltWheelDelayStage,
             'BanditTraining': BanditTrainingStage,
         }
         current = self.mouse.paradigm_stage.setdefault(self.paradigm_tag, 'Habituation')
-        if current == 'AltWheel':
-            aw_phase = self._paradigmdata['shaping']['altwheel']['phase']
-            stage_cls = AltWheelStage if aw_phase != 'complete' else AltWheelDelayStage
-        else:
-            stage_cls = stage_map[current]
+        stage_cls = stage_map[current]
         self.log_notice(f"Running stage: {stage_cls.__name__} (current_stage='{current}')")
         stage = stage_cls(parent=self)
         stage.run()
