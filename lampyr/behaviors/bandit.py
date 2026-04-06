@@ -576,6 +576,7 @@ class BanditParadigm(Paradigm):
             'reward_delay': {'current_step': 0},
         }
     }
+    STAGES: ClassVar[list] = ['Habituation', 'AnyWheel', 'AltWheel', 'BanditTraining']
     DELAY_STEPS: ClassVar[list] = [0, 0.1, 0.25, 0.5, 0.75, 1.0]
 
     # Shaping rate parameters — dataclass fields, overridable per-instance
@@ -593,7 +594,6 @@ class BanditParadigm(Paradigm):
     def execute(self):
         super().execute()
         self._init_defaults()
-        self._store_params()
         self._apply_shaping_overrides()
         self._run_stage()
 
@@ -614,21 +614,6 @@ class BanditParadigm(Paradigm):
                 target[k] = deepcopy(v)
             elif isinstance(v, dict) and isinstance(target[k], dict):
                 self._deep_setdefaults(target[k], v)
-
-    def _store_params(self):
-        self._paradigmdata['params'] = {
-            'threshold_normal': self.threshold_normal,
-            'correction_rate': self.correction_rate,
-            'return_rate': self.return_rate,
-            'equalize_threshold': self.equalize_threshold,
-            'equalize_consecutive': self.equalize_consecutive,
-            'max_adjustment': self.max_adjustment,
-            'hab_merit_threshold': self.hab_merit_threshold,
-            'anywheel_participation_threshold': self.anywheel_participation_threshold,
-            'anywheel_consecutive': self.anywheel_consecutive,
-            'delay_merit_threshold': self.delay_merit_threshold,
-            'delay_steps': self.DELAY_STEPS,
-        }
 
     def _apply_shaping_overrides(self):
         aw = self._paradigmdata['shaping']['altwheel']

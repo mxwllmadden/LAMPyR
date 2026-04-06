@@ -57,6 +57,7 @@ class Stage(ParadigmSegment):
 class Paradigm(ParadigmSegment):
     # default properites
     DEFAULT_PROPERTIES : ClassVar[dict] = None
+    STAGES : ClassVar[list] = []
     
     # limits on history loading
     sessionhistory_sessionlimit : int = 2

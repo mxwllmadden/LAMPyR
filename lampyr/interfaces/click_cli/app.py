@@ -215,6 +215,20 @@ def mouse_paradigm(lampyr, mouseid, paradigm_name, stage):
         return
 
     if paradigm_name is None:
+        if stage is not None:
+            current_paradigm = lampyr.mouse.paradigm
+            if not current_paradigm:
+                click.echo('No paradigm set. Provide a paradigm name or set one first.')
+                return
+            paradigm_cls = lampyr.behaviors.get(current_paradigm)
+            valid_stages = getattr(paradigm_cls, 'STAGES', [])
+            if valid_stages and stage not in valid_stages:
+                click.echo(f'Invalid stage "{stage}". Valid stages: {", ".join(valid_stages)}')
+                return
+            lampyr.mouse.paradigm_stage[current_paradigm] = stage
+            click.echo(f'Set {mouseid} stage → {stage} (paradigm: {current_paradigm})')
+            lampyr.mousemanager.save()
+            return
         # Dump current paradigm info
         m = lampyr.mouse
         click.echo(f'\nParadigm:  {m.paradigm or "(none)"}')
@@ -236,6 +250,11 @@ def mouse_paradigm(lampyr, mouseid, paradigm_name, stage):
     click.echo(f'Set {mouseid} paradigm → {paradigm_name}')
 
     if stage is not None:
+        paradigm_cls = lampyr.behaviors.get(paradigm_name)
+        valid_stages = getattr(paradigm_cls, 'STAGES', [])
+        if valid_stages and stage not in valid_stages:
+            click.echo(f'Invalid stage "{stage}". Valid stages: {", ".join(valid_stages)}')
+            return
         lampyr.mouse.paradigm_stage[paradigm_name] = stage
         click.echo(f'Set {mouseid} stage → {stage} (paradigm: {paradigm_name})')
 
