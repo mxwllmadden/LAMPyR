@@ -492,17 +492,29 @@ class AltWheelStage(ResponseAbstractStage):
                 self.log_notice(f"Adjusted score → {new_score} (L:{lt}° R:{rt}°)")
 
         elif phase == 'return':
-            if score > 0:
-                score = max(0, score - p['return_rate'])
-            elif score < 0:
-                score = min(0, score + p['return_rate'])
-            aw['adjustment_score'] = score
+            against_prevailing = (score > 0 and sb < 0) or (score < 0 and sb > 0)
+            ok_to_return = abs(sb) < p['equalize_threshold'] or against_prevailing
+            if ok_to_return:
+                if score > 0:
+                    score = max(0, score - p['return_rate'])
+                elif score < 0:
+                    score = min(0, score + p['return_rate'])
+                aw['adjustment_score'] = score
+            else:
+                self.log_notice(f"Return paused: bias present (sb={sb:.2f}), holding score at {score}.")
             lt = max(5, min(40, N - score))
             rt = max(5, min(40, N + score))
-            self.log_notice(f"Returning score → {score} (L:{lt}° R:{rt}°)")
+            self.log_notice(f"Return phase score={score} (L:{lt}° R:{rt}°)")
             if score == 0:
-                aw['phase'] = 'complete'
-                self.log_notice('Score fully normalized. AltWheel shaping complete.')
+                if abs(sb) < p['equalize_threshold']:
+                    aw['consecutive_normalized'] = aw.get('consecutive_normalized', 0) + 1
+                    self.log_notice(f"Normalized ({aw['consecutive_normalized']}/{p['equalize_consecutive']})")
+                    if aw['consecutive_normalized'] >= p['equalize_consecutive']:
+                        aw['phase'] = 'complete'
+                        self.log_notice('Score fully normalized. AltWheel shaping complete.')
+                else:
+                    aw['consecutive_normalized'] = 0
+                    self.log_notice(f"Score at 0 but bias present (sb={sb:.2f}). Resetting counter.")
 
 
 @dataclass
@@ -572,6 +584,7 @@ class BanditParadigm(Paradigm):
                 'phase': 'correction',
                 'adjustment_score': 0,
                 'consecutive_equalized': 0,
+                'consecutive_normalized': 0,
             },
             'reward_delay': {'current_step': 0},
         }
