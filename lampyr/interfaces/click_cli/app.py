@@ -108,8 +108,8 @@ def mouse_create(lampyr : Lampyr, mouseid, force, **kwargs):
             return
         mousedir = os.path.join(lampyr.config.get('lampyr.mice_directory'),mouseid)
         if not os.path.exists(mousedir):
-            click.echo(f'\nFailed to create mouse: No folder exists at {lampyr.config.get("lampyr.mice_directory")} for that mouseid.')
-            return
+            os.makedirs(mousedir)
+            click.echo(f'Created folder: {mousedir}')
     if kwargs['paradigm'] is not None:
         if kwargs['paradigm'] not in lampyr.paradigms:
             click.echo(f'\nFailed to create mouse: {kwargs["paradigm"]} Paradigm does not exist.')
