@@ -12,11 +12,30 @@ import numpy as np
 import time
 
 class RigManager(AbstractManager):
+    """
+    Manages connection to and calibration of the physical rig.
+
+    Attributes
+    ----------
+    rig : ArduinoBanditRig_0 or None
+        The connected rig object; ``None`` until :meth:`connect` is called.
+    connected : bool
+        Whether a rig is currently connected.
+    """
+
     def start(self):
+        """Initialise rig and connection state to disconnected."""
         self.rig = None
         self.connected = False
 
     def connect(self):
+        """
+        Connect to the Arduino rig and apply the stored sipper calibration.
+
+        Instantiates :class:`~lampyr.rigs.rigcontrol.ArduinoBanditRig_0`,
+        starts the serial listener thread, and sets the dispenser size from
+        ``config['rig.sipper_calib']``.
+        """
         self._output_func('Connecting to Arduino Rig...')
         self.rig = ArduinoBanditRig_0()
         self._output_func('Creating serial monitor thread...')
@@ -26,6 +45,9 @@ class RigManager(AbstractManager):
         self.connected = True
 
     def disconnect(self):
+        """
+        Stop the serial monitor thread and close the rig serial port.
+        """
         self._output_func('Closing monitoring thread...')
         self.rig.abort()
         time.sleep(2)
@@ -34,6 +56,22 @@ class RigManager(AbstractManager):
         self.connected = False
 
     def calibrate(self):
+        """
+        Interactively calibrate the sipper dispenser to deliver ~5 µl per reward.
+
+        Performs a multi-point gravimetric calibration:
+
+        1. Tests three dispense sizes around the current estimate.
+        2. Fits a linear regression to the measured volumes.
+        3. Solves for the size that produces 5 µl.
+        4. Validates with a final test dispense.
+        5. Repeats until ``|measured_volume - 0.005 ml| < 0.0005 ml``.
+
+        Stores the calibrated size in ``config['rig.sipper_calib']`` and
+        updates ``config['rig.calibrated']`` with the current timestamp.
+        Connects to the rig first if not already connected, and disconnects
+        afterwards if it was not connected before.
+        """
         was_connected = self.connected
         if not self.connected:
             self.connect()

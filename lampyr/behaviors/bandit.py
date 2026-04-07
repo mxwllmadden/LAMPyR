@@ -15,17 +15,54 @@ from dataclasses import dataclass, field
 
 
 def event_waterreward(self: Trial):
+    """
+    Trial event callback: dispense a water reward and log it.
+
+    Parameters
+    ----------
+    self : Trial
+        The trial segment that triggered this event.
+    """
     self.log_debug('Sending give reward command to rig')
     self.rig.reward.give()
     self.log_reward()
 
 def event_trialstart(self: Trial):
+    """
+    Trial event callback: play the trial-start tone via the rig speaker.
+
+    Parameters
+    ----------
+    self : Trial
+        The trial segment that triggered this event.
+    """
     self.log_debug('Sending play trial tone command to rig')
     self.rig.play.begintrialtone()
 
 
 @dataclass
 class HabituationTrial(Trial):
+    """
+    A single habituation trial: deliver a free water reward and monitor consumption.
+
+    The trial pauses for an ITI, delivers a reward, then waits for the mouse
+    to lick within the consumption window.  If no lick is detected, an
+    extended wait period is offered.  Abstention is logged if the mouse never
+    licks; merit is optionally logged on consumption.
+
+    Attributes
+    ----------
+    iti1_dur : float
+        Pre-reward inter-trial interval in seconds.
+    reward_consumption_period_s : float
+        Primary lick-detection window after reward delivery (seconds).
+    reward_consumption_nolick_delay_s : float
+        Extended wait period if no lick detected in the primary window (seconds).
+    count_merits : bool
+        If ``True``, log merit when the reward is consumed.
+    iti2_dur : float
+        Post-consumption inter-trial interval in seconds.
+    """
     iti1_dur: float = 1
     reward_consumption_period_s: Tuple[int] = 15
     reward_consumption_nolick_delay_s: float = 40
@@ -33,11 +70,15 @@ class HabituationTrial(Trial):
     iti2_dur: float = 0.5
 
     def setup(self):
+        """Register the reward event callback."""
         self.register_event('reward',
                             callback=event_waterreward,
                             description='Water reward given')
 
     def loop(self):
+        """
+        Execute one habituation trial iteration: ITI → reward → consumption → ITI.
+        """
         # Start behavior
         time.sleep(self.iti1_dur)
         self.trigger_event('reward')
@@ -46,6 +87,14 @@ class HabituationTrial(Trial):
         self.finish()
 
     def loop_consumption(self):
+        """
+        Wait for the mouse to lick after reward delivery.
+
+        Monitors licks for ``reward_consumption_period_s`` seconds.  If no
+        lick is detected, extends monitoring to
+        ``reward_consumption_nolick_delay_s`` seconds.  Records
+        ``reward_consumed`` in reports and logs merit or abstention.
+        """
         slick = time.time()
         licked = False
         while time.time() - slick < self.reward_consumption_period_s:
@@ -67,12 +116,19 @@ class HabituationTrial(Trial):
 
 @dataclass
 class RewardedHabituationTask(Task):
+    """
+    Task that repeatedly runs :class:`HabituationTrial` instances until the
+    session stop conditions are met.
+    """
+
     slug: str = 'RewHab'
 
     def setup(self):
+        """No setup required; all trial parameters are set inline."""
         pass
 
     def loop(self):
+        """Create and run one :class:`HabituationTrial` per iteration."""
         trial = HabituationTrial(parent=self,
                                  iti1_dur=1,
                                  reward_consumption_period_s=8,
@@ -84,19 +140,32 @@ class RewardedHabituationTask(Task):
 
 @dataclass
 class HabituationStage(Stage):
+    """
+    Stage 0: free-reward habituation.
+
+    Runs :class:`RewardedHabituationTask` and advances the mouse to the
+    ``'AnyWheel'`` stage after two consecutive sessions meeting the merit
+    threshold.
+    """
+
     slug: str = 'Stage0'
 
     def define_sessionparams(self):
+        """Set duration (60 min), serial abstention (10), and reward (200) limits."""
         self.set_sessionparam('duration_limit', 60)
         self.set_sessionparam('serial_abstention_limit', 10)
         self.set_sessionparam('reward_limit', 200)
 
     def define_task(self):
+        """Run the habituation task."""
         task = RewardedHabituationTask(parent=self)
         task.run()
         del task
 
     def define_shaping(self):
+        """
+        Advance to AnyWheel after two consecutive sessions meeting merit threshold.
+        """
         if self._paradigmdata is None or not session_valid(self):
             return
         p = self._paradigmdata['params']
@@ -114,6 +183,33 @@ class HabituationStage(Stage):
 
 @dataclass
 class BanditTrial(Trial):
+    """
+    A single two-armed bandit trial.
+
+    Stages: ITI1 → pretrial hold → trial response window → ITI2.
+    The mouse must hold still during the pretrial period, then make a left or
+    right wheel turn during the response window.  Reward is delivered
+    probabilistically based on ``trial_rewardprobs_perc``.
+
+    Attributes
+    ----------
+    iti_1_dur : float
+        Pre-pretrial ITI duration (seconds).
+    pretrial_hold_dur : float
+        Required still-hold duration before trial start (seconds).
+    pretrial_movement_threshold : float
+        Maximum cumulative wheel movement (degrees) allowed during pretrial.
+    trial_responsewindow_s : float
+        Response window duration after trial start tone (seconds).
+    trial_responsethresholds_deg : dict
+        ``{'Left': deg, 'Right': deg}`` wheel displacement thresholds.
+    trial_rewardprobs_perc : dict
+        ``{'Left': %, 'Right': %, 'None': %}`` reward probabilities.
+    reward_delay_s : float
+        Delay between response and reward delivery (seconds).
+    iti2_dur : float
+        Post-trial ITI duration (seconds).
+    """
     iti_1_dur: float = 1
     pretrial_hold_dur: float = 2
     pretrial_movement_threshold: float = 5
@@ -127,6 +223,7 @@ class BanditTrial(Trial):
     iti2_dur: float = 2.5
 
     def setup(self):
+        """Register trial events and set initial trial stage to ``'iti1'``."""
         self.register_event('reward',
                             callback=event_waterreward,
                             description='Water reward given')
@@ -141,6 +238,12 @@ class BanditTrial(Trial):
         self.log_debug(self.trial_rewardprobs_perc)
 
     def loop(self):
+        """
+        Dispatch to the current trial stage handler.
+
+        Advances through ``'iti1'`` → ``'pretrial'`` → ``'trial'`` → ``'iti2'``
+        and calls :meth:`finish` at the end of ``'iti2'``.
+        """
         time.sleep(0.1)
         match self._trialstage:
             case 'iti1':
@@ -156,6 +259,13 @@ class BanditTrial(Trial):
                 self.finish()
 
     def loop_pretrial(self):
+        """
+        Check that the animal has held still for the required pretrial duration.
+
+        Measures wheel movement over the last ``pretrial_hold_dur`` seconds.
+        If movement is below ``pretrial_movement_threshold``, triggers the
+        trial-start tone and advances to the ``'trial'`` stage.
+        """
         if time.time() - self._tstagestart < self.pretrial_hold_dur:
             return
         last2seconds = time.time() - self.pretrial_hold_dur
@@ -169,6 +279,14 @@ class BanditTrial(Trial):
             self.log_info('Animal movement detected. Waiting for cessation.', delay=4)
 
     def loop_trial(self):
+        """
+        Detect wheel response and resolve reward.
+
+        Reads cumulative wheel displacement since trial start.  Once a left,
+        right, or timeout (``'None'``) response is detected, records merit/
+        demerit/abstention, samples reward probabilistically, delivers reward
+        if warranted, and advances to ``'iti2'``.
+        """
         wheel_movement = self.rig.wheel.movement_since(self._tstagestart)
         response = None
 
@@ -211,6 +329,19 @@ class BanditTrial(Trial):
         self._trialstage = 'iti2'
 
     def satisfies_condition(self, counttype: str) -> bool:
+        """
+        Check whether this trial satisfies a task-block counting condition.
+
+        Parameters
+        ----------
+        counttype : str
+            One of ``'Reward'``, ``'Merit'``, or ``'RewardedMerit'``.
+
+        Returns
+        -------
+        bool
+            Whether the trial meets the specified condition.
+        """
         match counttype:
             case 'Reward':
                 return bool(self.reports['rewarded'])
@@ -222,6 +353,53 @@ class BanditTrial(Trial):
 
 @dataclass
 class BanditTask(Task):
+    """
+    Task that manages alternating target blocks and optional rescue trials.
+
+    Runs :class:`BanditTrial` instances with reward probabilities determined
+    by the current target side.  Supports configurable block sizes, a rescue
+    trial mechanism for disengaged animals, and randomised reward probability
+    schedules.
+
+    Attributes
+    ----------
+    target_mode : {'Random', 'Any', 'Left', 'Right'}
+        How the initial target side is chosen.  ``'Random'`` picks left or
+        right at random; others fix the target.
+    reward_prob_target : int
+        Reward probability (%) for the target side.
+    reward_prob_offtarget : int
+        Reward probability (%) for the non-target side.
+    reward_delay_s : float
+        Delay between response and reward (seconds).
+    rescue_trial_enabled : bool
+        If ``True``, insert a :class:`HabituationTrial` when serial abstention
+        exceeds ``rescue_threshold``.
+    rescue_limit : int
+        Maximum number of rescue trials per session.
+    rescue_cooldown : int
+        Minimum trials between rescue trials.
+    rescue_threshold : int
+        Serial abstention count that triggers a rescue trial.
+    taskblocks_enabled : bool
+        If ``True``, switch target sides after completing a block.
+    taskblocks_sizerange : tuple of int
+        ``(min, max)`` range for random block size selection.
+    taskblocks_blockcounttype : {'Reward', 'Merit', 'RewardedMerit'}
+        Which trial outcome type counts toward block completion.
+    taskblocks_consecutivecounttype : {'Reward', 'Merit', 'RewardedMerit'}
+        Which outcome type counts toward the minimum consecutive requirement.
+    taskblocks_minimumconsecutivecount : int
+        Minimum consecutive count required before a block can end (-1 to disable).
+    random_target_probs_enabled : bool
+        If ``True``, randomise reward probabilities at each block reset.
+    random_target_probs_targets : list of int
+        Pool of target probabilities to sample from.
+    random_target_probs_offtargets : list of int
+        Pool of off-target probabilities to sample from.
+    random_target_probs_probability_of_nulltrialblock : int
+        Probability (%) of a null block where both sides have equal reward.
+    """
     target_mode: Literal['Random', 'Any', 'Left', 'Right'] = 'Random'
     reward_prob_target: int = 80
     reward_prob_offtarget: int = 20
@@ -242,6 +420,9 @@ class BanditTask(Task):
     random_target_probs_probability_of_nulltrialblock: int = 15
 
     def setup(self):
+        """
+        Determine the initial target side and reset block/rescue counters.
+        """
         match self.target_mode:
             case 'Random':
                 self._target = random.choice(['Left', 'Right'])
@@ -252,6 +433,11 @@ class BanditTask(Task):
         self.taskblock_reset()
 
     def taskblock_reset(self):
+        """
+        Rebuild reward probability tables and reset block counters for a new block.
+
+        Optionally calls :meth:`randomize_target_probs` before rebuilding.
+        """
         if self.random_target_probs_enabled:
             self.randomize_target_probs()
         self._reward_probs = {
@@ -268,6 +454,12 @@ class BanditTask(Task):
         self.log_info(f'Off-target reward is {self.reward_prob_offtarget}%')
 
     def randomize_target_probs(self):
+        """
+        Randomly select target and off-target reward probabilities for the next block.
+
+        With probability ``random_target_probs_probability_of_nulltrialblock / 100``,
+        creates a null block where both sides have 50% reward probability.
+        """
         if random.random() < (self.random_target_probs_probability_of_nulltrialblock / 100):
             self.log_notice('Starting null taskblock')
             self.reward_prob_offtarget = 50
@@ -277,6 +469,9 @@ class BanditTask(Task):
             self.reward_prob_target = random.choice(self.random_target_probs_targets)
 
     def taskblock_next(self):
+        """
+        Flip the target side (Left ↔ Right) and start a new block.
+        """
         match self._target:
             case 'Left':
                 self._target = 'Right'
@@ -287,6 +482,20 @@ class BanditTask(Task):
         self.taskblock_reset()
 
     def _update_block_count(self, trial: BanditTrial, trial_type: str) -> None:
+        """
+        Update block-progress counters after a completed trial.
+
+        Only processes ``'Bandit'`` trial types that have complete reports and
+        a directional response.  Updates both the block count and the
+        consecutive count, resetting the consecutive counter on failure.
+
+        Parameters
+        ----------
+        trial : BanditTrial
+            The completed trial to evaluate.
+        trial_type : str
+            Trial type string; only ``'Bandit'`` is counted.
+        """
         if trial_type != 'Bandit':
             return
         if not {'response', 'best_response', 'rewarded'}.issubset(trial.reports):
@@ -301,6 +510,13 @@ class BanditTask(Task):
             self.taskblocks_countconsecutive = 0
 
     def loop(self):
+        """
+        Run one trial (Bandit or Rescue) and update block progress counters.
+
+        Decides whether to insert a rescue trial based on serial abstention,
+        switches task blocks if the current block is complete, creates and
+        runs the appropriate trial type, then updates the block counters.
+        """
         trial_type = 'Bandit'
         if self.rescue_trial_enabled:
             if (self.session.serial_abstention >= self.rescue_threshold and
@@ -345,6 +561,23 @@ def session_valid(stage, min_duration_min: float = 20.0) -> bool:
 
 
 def report_count(triallist, segmentlist, report):
+    """
+    Count how many times each value of a report field appears across a list of trials.
+
+    Parameters
+    ----------
+    triallist : list of str
+        List of segment ``uniqueid`` strings to examine.
+    segmentlist : dict
+        Mapping from segment IDs to segment dicts (e.g. ``session.segments``).
+    report : str
+        Report field name to tally.
+
+    Returns
+    -------
+    dict
+        ``{value: count}`` mapping for each distinct value found.
+    """
     reportcounts = {}
     for trial_id in triallist:
         trial = segmentlist[trial_id]
@@ -357,15 +590,24 @@ def report_count(triallist, segmentlist, report):
 
 @dataclass
 class ResponseAbstractStage(Stage):
+    """
+    Abstract base for wheel-response stages, with shared session params and reporting.
+
+    Provides common default session limits and the :meth:`sessionsummary`
+    helper used by all response-based stages.
+    """
+
     slug: str = 'ResponseAbstractStage'
 
     def define_sessionparams(self):
+        """Set shared defaults: 60 min max, 20 min min, serial abstention 30, reward 200."""
         self.set_sessionparam('duration_limit', 60)
         self.set_sessionparam('duration_min', 20)
         self.set_sessionparam('serial_abstention_limit', 30)
         self.set_sessionparam('reward_limit', 200)
 
     def define_shaping(self):
+        """Base shaping: log response summary only."""
         self.sessionsummary()
 
     def _compute_sb_metric(self):
@@ -399,13 +641,21 @@ class ResponseAbstractStage(Stage):
 
 @dataclass
 class AnyWheelStage(ResponseAbstractStage):
+    """
+    Stage 1: any-direction wheel training with 100% reward probability.
+
+    Advances to ``'AltWheel'`` after the required number of consecutive
+    sessions meeting the participation threshold.
+    """
     slug: str = 'AnyWheel'
     
     def define_sessionparams(self):
+        """Extend base params: raise minimum duration to 40 minutes."""
         super().define_sessionparams()
         self.set_sessionparam('duration_min', 40)
 
     def define_task(self):
+        """Run an any-direction BanditTask with 100% reward and rescue trials enabled."""
         task = BanditTask(parent=self,
                           target_mode='Any',
                           reward_prob_target=100,
@@ -417,6 +667,9 @@ class AnyWheelStage(ResponseAbstractStage):
         del task
 
     def define_shaping(self):
+        """
+        Advance to AltWheel after the required consecutive sessions above participation threshold.
+        """
         super().define_shaping()
         if self._paradigmdata is None or not session_valid(self):
             return
@@ -435,9 +688,17 @@ class AnyWheelStage(ResponseAbstractStage):
 
 @dataclass
 class AltWheelStage(ResponseAbstractStage):
+    """
+    Stage 2: alternating-target bandit with adaptive threshold correction.
+
+    Runs a standard bandit task and applies a three-phase threshold adjustment
+    algorithm (correction → return → complete) to correct side bias while
+    keeping wheel thresholds within bounds.
+    """
     slug: str = 'AltWheel'
 
     def define_task(self):
+        """Run the alternating bandit task with 100/0 reward probabilities."""
         task = BanditTask(parent=self,
                           reward_prob_target=100,
                           reward_prob_offtarget=0,
@@ -447,6 +708,19 @@ class AltWheelStage(ResponseAbstractStage):
         del task
 
     def define_shaping(self):
+        """
+        Apply the three-phase bias-correction algorithm to wheel thresholds.
+
+        Phases:
+
+        * **correction** — incrementally shifts the ``adjustment_score`` to
+          push the harder side against the prevailing bias until the mouse
+          equalises.
+        * **return** — gradually reduces the score back to zero once equalized,
+          pausing if bias reappears.
+        * **complete** — no further adjustments once the score has been
+          normalized.
+        """
         sb = self.sessionsummary()
         if self._paradigmdata is None or not session_valid(self):
             return
@@ -519,10 +793,14 @@ class AltWheelStage(ResponseAbstractStage):
 
 @dataclass
 class BanditTrainingStage(ResponseAbstractStage):
+    """
+    Full bandit training stage with the default reward probability schedule.
+    """
     slug: str = 'BanditTraining'
     _task: object = None
 
     def define_task(self):
+        """Run the bandit task with rescue trials and retain a reference for analysis."""
         task = BanditTask(parent=self,
                           rescue_trial_enabled=True)
         task.run()
@@ -531,9 +809,13 @@ class BanditTrainingStage(ResponseAbstractStage):
 
 @dataclass
 class BanditEndStage(ResponseAbstractStage):
+    """
+    Final bandit stage run without rescue trials.
+    """
     slug: str = 'Bandit'
 
     def define_task(self):
+        """Run the bandit task without rescue trials."""
         task = BanditTask(parent=self,
                           rescue_trial_enabled=False)
         task.run()
@@ -542,9 +824,19 @@ class BanditEndStage(ResponseAbstractStage):
 
 @dataclass
 class AltWheelDelayStage(ResponseAbstractStage):
+    """
+    Intermediate stage that progressively introduces a reward delay.
+
+    Steps through ``BanditParadigm.DELAY_STEPS`` based on merit performance,
+    advancing to ``'BanditTraining'`` once the longest delay step is reached.
+    """
     slug: str = 'AltWheelDelay'
 
     def define_task(self):
+        """
+        Run an alternating bandit task; reward delay is overridden at runtime by
+        ``BanditParadigm._apply_shaping_overrides``.
+        """
         task = BanditTask(parent=self,
                           reward_prob_target=100,
                           reward_prob_offtarget=0,
@@ -554,6 +846,10 @@ class AltWheelDelayStage(ResponseAbstractStage):
         del task
 
     def define_shaping(self):
+        """
+        Advance the reward delay step when merit threshold is met; promote to BanditTraining
+        at the final step.
+        """
         self.sessionsummary()
         if self._paradigmdata is None or not session_valid(self):
             return
@@ -574,6 +870,46 @@ class AltWheelDelayStage(ResponseAbstractStage):
 
 @dataclass
 class BanditParadigm(Paradigm):
+    """
+    Full two-armed bandit training paradigm.
+
+    Orchestrates all training stages from habituation to full bandit sessions.
+    Persists per-mouse shaping state in ``mouse.properties['bandit']`` and
+    applies computed wheel-threshold and reward-delay overrides to
+    :class:`BanditTrial` instances before each session.
+
+    Class Variables
+    ---------------
+    DEFAULT_PROPERTIES : dict
+        Initial values for all shaping state variables.
+    STAGES : list of str
+        Ordered stage progression.
+    DELAY_STEPS : list of float
+        Reward delay values (seconds) used by :class:`AltWheelDelayStage`.
+
+    Parameters
+    ----------
+    threshold_normal : int
+        Symmetric wheel threshold (degrees) when adjustment_score is 0.
+    correction_rate : int
+        Score increment applied each session during threshold correction.
+    return_rate : int
+        Score decrement applied each session during the return phase.
+    equalize_threshold : float
+        Side-bias metric (|sb| < this) considered equalized.
+    equalize_consecutive : int
+        Consecutive equalized sessions required to change phase.
+    max_adjustment : int
+        Maximum absolute value of adjustment_score.
+    hab_merit_threshold : int
+        Merit count required for a habituation session to be considered good.
+    anywheel_participation_threshold : int
+        Participation count required for a good AnyWheel session.
+    anywheel_consecutive : int
+        Consecutive good sessions required to advance from AnyWheel.
+    delay_merit_threshold : int
+        Merit count required to advance the reward delay step.
+    """
     slug: str = 'bandit'
     paradigm_tag: str = 'BanditParadigm'
     DEFAULT_PROPERTIES: ClassVar[dict] = {
@@ -605,16 +941,28 @@ class BanditParadigm(Paradigm):
     delay_merit_threshold: int = 150
 
     def execute(self):
+        """
+        Run the full paradigm: load mouse data, initialise defaults, set
+        overrides, and execute the current stage.
+        """
         super().execute()
         self._init_defaults()
         self._apply_shaping_overrides()
         self._run_stage()
 
     def _init_defaults(self):
+        """
+        Migrate legacy data and fill any missing keys with ``DEFAULT_PROPERTIES``.
+        """
         self._migrate_altwheel()
         self._deep_setdefaults(self._paradigmdata, self.DEFAULT_PROPERTIES)
 
     def _migrate_altwheel(self):
+        """
+        Convert legacy ``right_threshold`` / ``left_threshold`` keys to ``adjustment_score``.
+
+        Only runs if the old keys are present and the new key is absent.
+        """
         aw = self._paradigmdata.get('shaping', {}).get('altwheel', {})
         if 'right_threshold' in aw and 'adjustment_score' not in aw:
             score = aw['right_threshold'] - self.threshold_normal
@@ -622,6 +970,16 @@ class BanditParadigm(Paradigm):
             self.log_notice(f"Migrated altwheel thresholds → adjustment_score={score}")
 
     def _deep_setdefaults(self, target, defaults):
+        """
+        Recursively set missing keys in ``target`` from ``defaults``.
+
+        Parameters
+        ----------
+        target : dict
+            The dict to fill.
+        defaults : dict
+            Source of default values.
+        """
         for k, v in defaults.items():
             if k not in target:
                 target[k] = deepcopy(v)
@@ -629,6 +987,15 @@ class BanditParadigm(Paradigm):
                 self._deep_setdefaults(target[k], v)
 
     def _apply_shaping_overrides(self):
+        """
+        Compute per-trial wheel thresholds and reward delay from current shaping state.
+
+        Writes the computed ``trial_responsethresholds_deg`` and
+        ``reward_delay_s`` into
+        ``mouse.mouse_behav_param_overrides['BanditTrial']``, which will be
+        applied by :meth:`~lampyr.segments.behavior.BehaviorSegment._checkoverrides`
+        when each :class:`BanditTrial` is initialised.
+        """
         aw = self._paradigmdata['shaping']['altwheel']
         step = self._paradigmdata['shaping']['reward_delay']['current_step']
         delay = self.DELAY_STEPS[step]
@@ -647,6 +1014,12 @@ class BanditParadigm(Paradigm):
         self.log_notice(f"BanditTrial overrides: thresholds L:{lt}° R:{rt}° (score={score}), delay {delay}s")
 
     def _run_stage(self):
+        """
+        Look up the mouse's current stage, instantiate it, and run it.
+
+        Uses ``mouse.paradigm_stage[paradigm_tag]`` to select the stage class
+        from the internal stage map.
+        """
         stage_map = {
             'Habituation':    HabituationStage,
             'AnyWheel':       AnyWheelStage,

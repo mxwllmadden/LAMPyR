@@ -19,6 +19,25 @@ from typing import Iterable, Literal, Union, List, Tuple
 def determine_ideal_samplerate(event_times,
                                extraction_profile: TraceExtractionProfile,
                                mode: Literal['mean', 'median'] = 'mean'):
+    """
+    Compute the ideal number of samples per inter-event interval.
+
+    Parameters
+    ----------
+    event_times : np.ndarray
+        2D array of shape ``(n_segments, n_events)`` containing event timestamps.
+    extraction_profile : TraceExtractionProfile
+        Provides the desired sample rate (samples per second).
+    mode : {'mean', 'median'}, optional
+        Whether to use mean or median inter-event duration when averaging
+        across segments.  Default is ``'mean'``.
+
+    Returns
+    -------
+    list of int
+        One integer per inter-event interval giving the ideal sample count.
+        NaN intervals are replaced with 1.
+    """
     diffs = np.diff(event_times, axis=1)
     if mode == 'mean':
         elapsed = diffs.mean(axis=0)
@@ -37,6 +56,27 @@ def timeconversion_bulk(data: MultiSessionDataset,
                         event_times,
                         source_time,
                         target_time):
+    """
+    Convert a 2D array of event times from one time base to another across sessions.
+
+    Parameters
+    ----------
+    data : MultiSessionDataset
+        Dataset providing access to session rig data for time conversion.
+    sessionids : iterable of str
+        Session IDs corresponding to each row of ``event_times``.
+    event_times : np.ndarray
+        2D array of shape ``(n_segments, n_events)`` in ``source_time`` base.
+    source_time : str
+        Source time axis key (e.g. ``'unix_time'``).
+    target_time : str
+        Target time axis key (e.g. ``'arduino_time'``).
+
+    Returns
+    -------
+    np.ndarray
+        2D array of the same shape as ``event_times`` in ``target_time`` base.
+    """
     converted_times = np.empty(event_times.shape)
     timeconverters = {}
     for ind, sessionid in enumerate(sessionids):
@@ -63,6 +103,59 @@ def dynamic_trace_extraction(data,
                              padding=False,
                              pad_start=2,
                              pad_end=6):
+    """
+    Extract aligned trace arrays across multiple segments using dynamic time warping.
+
+    Extracts event timestamps, optionally pads them, converts to the target
+    time base, builds a per-row dynamic time array, and evaluates the
+    extraction profile at each time point.  Also computes a shared pseudotime
+    axis based on mean inter-event intervals.
+
+    Parameters
+    ----------
+    data : MultiSessionDataset
+        Dataset providing session data and trace access.
+    segments : iterable of SegmentReference
+        Segments to extract from.
+    events : iterable of str
+        Ordered event names that define the time landmarks.
+    extraction_profile : TraceExtractionProfile
+        Specifies signal, mode, sample rate, time type, and fill value.
+    samples : list of int or None, optional
+        Override the ideal sample count for each interval.  ``None`` entries
+        use the ideal value.  Must have length ``len(events) - 1`` (or
+        ``len(events) + 1`` if ``padding=True``).
+    event_pseudotimes : list of float or None, optional
+        Override the pseudotime anchor for each event.  ``None`` entries use
+        the ideal (mean-based) value.
+    baseline_range : tuple of (float, float), optional
+        If provided, subtract the mean of the trace within
+        ``(baseline_range[0], baseline_range[1])`` pseudotime from each row.
+    padding : bool, optional
+        If ``True``, prepend ``pad_start`` seconds before the first event and
+        append ``pad_end`` seconds after the last event.
+    pad_start : float, optional
+        Seconds of padding before the first event. Default is 2.
+    pad_end : float, optional
+        Seconds of padding after the last event. Default is 6.
+
+    Returns
+    -------
+    pseudotime : np.ndarray
+        1D pseudotime axis of length ``sum(samples) + 1``.
+    result_arr : np.ndarray
+        2D trace array of shape ``(n_segments, len(pseudotime))``.
+    info : dict
+        Additional information: ``'event_times'``, ``'samples_ideal'``,
+        ``'pseudoeventtimes_ideal'``.
+
+    Raises
+    ------
+    KeyError
+        If any event is missing from any segment.
+    ValueError
+        If ``len(samples)`` is incompatible with ``len(events)``.
+    """
     event_times = extract_event_times_multiple(data, segments, events)
     if np.isnan(event_times).sum() > 0:
         raise KeyError('Was not able to find all events in all segments')
@@ -130,7 +223,23 @@ def dynamic_trace_extraction(data,
 
 
 class SessionInterpolatedTraceExtractor:
+    """
+    Deprecated per-session trace extractor.
+
+    .. deprecated::
+        Use :func:`trace_extractor_factory` via :class:`MultiSessionDataset`
+        instead.
+    """
+
     def __init__(self, session: Session, time_type):
+        """
+        Parameters
+        ----------
+        session : Session
+            Session to build extractors from.
+        time_type : str
+            Time axis key to use for interpolation.
+        """
         print('SessionInterpolatedTraceExtractor is depreciated')
         self.time_type = time_type
         self.rigdata = {}
@@ -153,6 +262,23 @@ class SessionInterpolatedTraceExtractor:
             )
 
     def extract(self, rig_data: str, time_array: np.ndarray, mode="nearest"):
+        """
+        Extract trace values using nearest or linear interpolation.
+
+        Parameters
+        ----------
+        rig_data : str
+            Report channel name.
+        time_array : np.ndarray
+            Time points at which to evaluate the trace.
+        mode : {'nearest', 'linear'}, optional
+            Interpolation mode. Default is ``'nearest'``.
+
+        Returns
+        -------
+        np.ndarray
+            Extracted values.
+        """
         if mode == "nearest":
             return self.rigdata[rig_data](time_array)
         elif mode == "linear":
@@ -162,6 +288,25 @@ class SessionInterpolatedTraceExtractor:
 
     def extract_windowed_dynamic(self, rig_data: str, time_array: np.ndarray,
                                  mode="mean", fill=np.nan):
+        """
+        Extract trace values using adaptive windowed aggregation.
+
+        Parameters
+        ----------
+        rig_data : str
+            Report channel name.
+        time_array : np.ndarray
+            Time points defining window centres.
+        mode : {'mean', 'sum', 'count', 'rate'}, optional
+            Aggregation mode. Default is ``'mean'``.
+        fill : float, optional
+            Value for windows with no data. Default is ``np.nan``.
+
+        Returns
+        -------
+        np.ndarray
+            Aggregated values at each time point.
+        """
         t_data = self.rigdata_raw[rig_data][self.time_type]
         v_data = self.rigdata_raw[rig_data]['report_value']
 

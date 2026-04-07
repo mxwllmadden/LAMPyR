@@ -24,6 +24,25 @@ from typing import Union, List
 
 
 def savejson(fp, data, saveasis=True):
+    """
+    Serialise data to a JSON file.
+
+    Parameters
+    ----------
+    fp : str or os.PathLike
+        Destination file path.
+    data : object
+        Data to serialise.  Dataclasses are converted with ``asdict`` if
+        ``saveasis=False``.
+    saveasis : bool, optional
+        If ``True`` (default), write ``data`` directly.  If ``False`` and
+        ``data`` is a dataclass, convert it first.
+
+    Returns
+    -------
+    str or os.PathLike
+        The path ``fp`` that was written to.
+    """
     if not saveasis:
         if is_dataclass(data):
             data = asdict(data)
@@ -33,11 +52,37 @@ def savejson(fp, data, saveasis=True):
 
 
 def loadjson(fp):
+    """
+    Load a JSON file and return the parsed object.
+
+    Parameters
+    ----------
+    fp : str or os.PathLike
+        Path to the JSON file.
+
+    Returns
+    -------
+    object
+        Parsed JSON content.
+    """
     with open(fp, 'r') as f:
         return json.load(f)
 
 
 def savecsv(fp, data: List[dict]):
+    """
+    Write a list of dicts to a CSV file.
+
+    All keys found across all dicts are used as column headers.  Missing
+    values are left blank.
+
+    Parameters
+    ----------
+    fp : str or os.PathLike
+        Destination file path.
+    data : list of dict
+        Rows to write; each dict maps column name to value.
+    """
     all_keys = []
     for entry in data:
         for key in entry.keys():
@@ -50,6 +95,19 @@ def savecsv(fp, data: List[dict]):
         writer.writerows(data)
         
 def loadcsv(fp):
+    """
+    Load a CSV file and return a list of row dicts.
+
+    Parameters
+    ----------
+    fp : str or os.PathLike
+        Path to the CSV file.
+
+    Returns
+    -------
+    list of dict
+        One dict per row, keyed by column header.
+    """
     data = []
     with open(fp, 'r') as f:
         reader = csv.DictReader(f)
@@ -59,18 +117,65 @@ def loadcsv(fp):
 
 
 def savepickle(fp, data):
+    """
+    Pickle and save ``data`` to a binary file.
+
+    Parameters
+    ----------
+    fp : str or os.PathLike
+        Destination file path.
+    data : object
+        Object to pickle.
+
+    Returns
+    -------
+    str or os.PathLike
+        The path ``fp`` that was written to.
+    """
     with open(fp, 'wb') as f:
         pickle.dump(data, f)
     return fp
 
 
 def loadpickle(filepath):
+    """
+    Load and return a pickled object from a binary file.
+
+    Parameters
+    ----------
+    filepath : str or os.PathLike
+        Path to the pickle file.
+
+    Returns
+    -------
+    object
+        The unpickled object.
+    """
     with open(filepath, 'rb') as f:
         data = pickle.load(f)
     return data
 
 
 def loadh5(fp):
+    """
+    Load an HDF5 file written by :func:`saveh5` and reconstruct its Python object.
+
+    Recursively traverses the HDF5 group structure, using the ``'_type'``
+    attribute stored by :func:`saveh5` to reconstruct dicts, lists, ndarrays,
+    and scalars.  Falls back to heuristic type detection for files written
+    without ``'_type'`` attributes.
+
+    Parameters
+    ----------
+    fp : str or os.PathLike
+        Path to the ``.h5`` file.
+
+    Returns
+    -------
+    object or None
+        The reconstructed Python object rooted at the ``'root'`` HDF5 group,
+        or ``None`` if no ``'root'`` group exists.
+    """
     def recursive_load(h5group):
         # Get the type hint saved by saveh5
         node_type = h5group.attrs.get('_type')
@@ -140,6 +245,26 @@ def loadh5(fp):
 
 
 def saveh5(fp, data):
+    """
+    Recursively save a Python object to an HDF5 file.
+
+    Supports dicts, lists/tuples, numpy arrays, and scalars (int, float, str,
+    bool, numpy number types).  Unsupported types are stored as their
+    ``str()`` representation with a ``'unknown_fallback_str'`` type tag.
+    Dataclasses are converted with ``asdict`` before saving.
+
+    Parameters
+    ----------
+    fp : str or os.PathLike
+        Destination ``.h5`` file path.
+    data : object
+        Python object to save.
+
+    Returns
+    -------
+    str or os.PathLike
+        The path ``fp`` that was written to.
+    """
     def recursive_save(obj, h5group):
         if isinstance(obj, dict):
             h5group.attrs['_type'] = 'dict'  # Indicate it's a dictionary

@@ -25,6 +25,49 @@ def longtidy_multidynamictraceextraction(
         custom_exposures: Dict[str, Callable] = None,
         perprofilekwargs: dict = None,
         **kwargs):
+    """
+    Extract multiple signal traces across segments and return long-form DataFrames.
+
+    Runs :func:`~lampyr.analysis.traces.dynamic_trace_extraction` for each
+    extraction profile, concatenates results into a single long-tidy trace
+    DataFrame, and joins segment metadata.
+
+    Parameters
+    ----------
+    data : MultiSessionDataset
+        Dataset to extract from.
+    segments : iterable of SegmentReference
+        Segments to process.
+    events : iterable of str
+        Event names defining time landmarks (shared across all profiles).
+    extraction_profiles : iterable of TraceExtractionProfile
+        One or more extraction profiles to run.
+    expose_reports : list of str, optional
+        Report field names to include as columns in ``segment_info``.
+    expose_properties : list of str, optional
+        Segment property names to include as columns in ``segment_info``.
+    expose_segmentattr : list of str, optional
+        Arbitrary segment attribute names to include as columns.
+    custom_exposures : dict of str -> callable, optional
+        ``{column_name: func(segment_dict) -> value}`` for computed columns.
+    perprofilekwargs : dict, optional
+        ``{profile_name: {kwarg: value}}`` to pass additional keyword arguments
+        to :func:`~lampyr.analysis.traces.dynamic_trace_extraction` for
+        specific profiles only.
+    **kwargs
+        Additional keyword arguments forwarded to
+        :func:`~lampyr.analysis.traces.dynamic_trace_extraction` for all
+        profiles.
+
+    Returns
+    -------
+    traceframe : pd.DataFrame
+        Long-tidy DataFrame with columns ``'time'``, ``'value'``, ``'signal'``,
+        ``'segkey'``, plus any exposed metadata columns.
+    segment_info : pd.DataFrame
+        One-row-per-segment metadata DataFrame with ``'segkey'``, ``'animal'``,
+        ``'session'``, ``'segment'``, plus any exposed columns.
+    """
     def seg2segkey(s): return f'{s.animal}_{s.session}_{s.segment}'
     exposures = (['segkey', 'animal', 'session', 'segment'] +
                  (expose_reports or []) +
@@ -84,6 +127,19 @@ def longtidy_multidynamictraceextraction(
     return traceframe, segment_info
 
 def load_parquet(path: str | Path) -> pd.DataFrame | None:
+    """
+    Load a Parquet file into a DataFrame, returning ``None`` if it does not exist.
+
+    Parameters
+    ----------
+    path : str or Path
+        Path to the ``.parquet`` file.
+
+    Returns
+    -------
+    pd.DataFrame or None
+        Loaded DataFrame, or ``None`` if the file is not found.
+    """
     path = Path(path)
     if not path.exists():
         return None
@@ -91,6 +147,24 @@ def load_parquet(path: str | Path) -> pd.DataFrame | None:
 
 
 def save_parquet(path: str | Path, df: pd.DataFrame, overwrite: bool = False):
+    """
+    Save a DataFrame to Parquet format using Snappy compression.
+
+    Parameters
+    ----------
+    path : str or Path
+        Destination path.  Parent directories are created if needed.
+    df : pd.DataFrame
+        DataFrame to save.
+    overwrite : bool, optional
+        If ``False`` (default), raises ``FileExistsError`` if the file already
+        exists.
+
+    Raises
+    ------
+    FileExistsError
+        If ``path`` exists and ``overwrite`` is ``False``.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -101,6 +175,27 @@ def save_parquet(path: str | Path, df: pd.DataFrame, overwrite: bool = False):
 
 
 def ltdataset(cachefile):
+    """
+    Decorator that caches a long-tidy dataset function's output to Parquet.
+
+    Wraps a function that returns ``(df_main, df_meta)`` and transparently
+    caches the result based on a hash of the function's source code.  If the
+    function body has not changed since the last run, the cached Parquet files
+    are returned instead of re-running.  If the function body changes, old
+    cache files are deleted and the function is re-run.
+
+    Parameters
+    ----------
+    cachefile : str or Path
+        Path to a JSON metadata file that tracks cache state.  Parquet files
+        are stored in the same directory.
+
+    Returns
+    -------
+    callable
+        The wrapped function.  The wrapper accepts an additional
+        ``force_reload=False`` keyword argument to bypass the cache.
+    """
     cachefile = Path(cachefile)
     cachefile.parent.mkdir(parents=True, exist_ok=True)
 

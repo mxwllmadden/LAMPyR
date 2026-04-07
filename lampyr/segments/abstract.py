@@ -16,6 +16,53 @@ from lampyr.primatives import Mouse, Session, uniqueid
 
 @dataclass
 class Segment(ABC):
+    """
+    Abstract base class for all Lampyr segment types.
+
+    A segment represents a discrete, timed unit of experimental behaviour
+    (trial, task, stage, paradigm, etc.).  Subclasses implement
+    :meth:`execute` to define what happens when the segment runs.
+
+    Segments form a tree: each segment knows its ``parent`` and accumulates
+    ``subdata`` references.  Property inheritance, logging, and session I/O
+    are all handled here.
+
+    Attributes
+    ----------
+    name : str or None
+        Human-readable name, auto-generated from parent and slug if not set.
+    slug : str or None
+        Short class-level label; defaults to the class name.
+    uniqueid : str or None
+        Globally unique identifier generated at initialisation.
+    starttime : float or None
+        Unix timestamp recorded at the start of :meth:`run`.
+    endtime : float or None
+        Unix timestamp recorded after :meth:`execute` returns.
+    rank : int
+        Depth in the segment tree; root segments have rank 0.
+    subdata : list of str
+        ``uniqueid`` strings of child segments appended during execution.
+    lampyr : object or None
+        Parent Lampyr instance; ``None`` when running standalone.
+    parent : Segment or None
+        Immediate parent segment; ``None`` for root segments.
+    records : list of tuple
+        General-purpose log: ``(unix_time, prefix, message)`` entries.
+    rig : object or None
+        Hardware rig object, inherited from parent or lampyr.
+    mouse : Mouse or None
+        Active mouse, inherited from parent or lampyr.
+    session : Session or None
+        Active session, inherited from parent or lampyr.
+    _output_func : callable or None
+        Output function used by the logging methods.
+    _verbose : bool
+        If ``True``, DEBUG messages are also written to output.
+    _frozen : bool
+        Set to ``True`` after :meth:`run` completes; prevents re-running.
+    """
+
     # General identification
     name: str = None
     slug: str = None
@@ -56,6 +103,14 @@ class Segment(ABC):
     _last_log_info: str = field(default='', init=False)
 
     def __post_init__(self):
+        """
+        Finalise segment initialisation after dataclass ``__init__``.
+
+        Sets default ``slug``, ``name``, and ``uniqueid``; inherits properties
+        from the parent segment and lampyr instance; creates a fallback
+        :class:`~lampyr.primatives.Session` if none was found; and marks root
+        segments (rank 0).
+        """
         self._configure()
         if self.slug is None:
             self.slug = self.__class__.__name__
@@ -79,6 +134,19 @@ class Segment(ABC):
 
     @classmethod
     def get_children(cls, recursive=True):
+        """
+        Return all subclasses of this segment class.
+
+        Parameters
+        ----------
+        recursive : bool, optional
+            If ``True`` (default), include indirect subclasses at all depths.
+
+        Returns
+        -------
+        set of type
+            Set of subclass objects.
+        """
         children = set()
         for subclass in cls.__subclasses__():
             children.add(subclass)
@@ -88,6 +156,19 @@ class Segment(ABC):
     
     @classmethod
     def get_parents(cls, recursive=True):
+        """
+        Return all :class:`Segment` ancestor classes of this class.
+
+        Parameters
+        ----------
+        recursive : bool, optional
+            If ``True`` (default), walk the full MRO and include grandparents.
+
+        Returns
+        -------
+        set of type
+            Set of ancestor Segment subclasses (excludes non-Segment bases).
+        """
         parents = set()
         for parent in cls.__bases__:
             if not issubclass(parent, Segment):
@@ -98,6 +179,19 @@ class Segment(ABC):
         return parents
     
     def run(self):
+        """
+        Execute the segment, recording start/end times and serialising data.
+
+        Calls :meth:`execute`, then :meth:`dump` in a ``finally`` block so
+        data is always persisted even if execution raises.
+
+        Raises
+        ------
+        RuntimeError
+            If called on a segment that has already been run (``_frozen``).
+        KeyboardInterrupt
+            Re-raised after logging, so the caller can handle forced quits.
+        """
         if self._frozen:
             raise RuntimeError('Running a segment twice is forbidden')
         self.starttime = time.time()
@@ -113,9 +207,34 @@ class Segment(ABC):
     
     @abstractmethod
     def execute(self):
+        """
+        Define the behaviour for this segment.
+
+        Called by :meth:`run`.  Subclasses must implement this method with
+        whatever logic the segment type requires.
+        """
         pass
 
     def _log(self, prefix, message: str, output=True, style='\x1b[33m'):
+        """
+        Internal log dispatcher: write to output and append to records.
+
+        Parameters
+        ----------
+        prefix : str
+            Log level label (e.g. ``'INFO'``, ``'ERROR'``).
+        message : str
+            Text to log.
+        output : bool, optional
+            If ``True``, pass the formatted string to ``_output_func``.
+        style : str, optional
+            ANSI escape code prefix for terminal colouring.
+
+        Returns
+        -------
+        float
+            Unix timestamp of the log event.
+        """
         if output:
             out = self._output_func if self._output_func is not None else print
             out(f'{style}[{prefix}][{self.name}] {message}\033[0m')
@@ -123,6 +242,23 @@ class Segment(ABC):
         return time.time()
 
     def log_info(self, message: str, delay = None):
+        """
+        Log an informational message (cyan).
+
+        Parameters
+        ----------
+        message : str
+            Message to log.
+        delay : float, optional
+            Minimum seconds between consecutive emissions of the same message.
+            If the same message was emitted within ``delay`` seconds, it is
+            suppressed.
+
+        Returns
+        -------
+        float
+            Unix timestamp of the log event.
+        """
         if delay is None:
             return self._log('INFO', message, output=True)
         if message != self._last_log_info or self._last_log_info_t + delay < time.time():
@@ -132,9 +268,37 @@ class Segment(ABC):
         return time.time()
 
     def log_debug(self, message: str):
+        """
+        Log a debug message (dark grey). Only shown when ``_verbose`` is True.
+
+        Parameters
+        ----------
+        message : str
+            Message to log.
+
+        Returns
+        -------
+        float
+            Unix timestamp of the log event.
+        """
         return self._log('DEBUG', message, output=self._verbose, style='\x1b[90m')
     
     def log_notice(self, message: str, delay=None):
+        """
+        Log a notice message (yellow).
+
+        Parameters
+        ----------
+        message : str
+            Message to log.
+        delay : float, optional
+            Minimum seconds between consecutive emissions of the same message.
+
+        Returns
+        -------
+        float
+            Unix timestamp of the log event.
+        """
         if delay is None:
             return self._log('NOTICE', message, output=True, style='\033[93m')
         if message != self._last_log_notice or self._last_log_notice_t + delay < time.time():
@@ -145,12 +309,51 @@ class Segment(ABC):
 
     
     def log_warning(self, message: str):
+        """
+        Log a warning message (orange).
+
+        Parameters
+        ----------
+        message : str
+            Message to log.
+
+        Returns
+        -------
+        float
+            Unix timestamp of the log event.
+        """
         return self._log('WARNING', message, output=True, style='\033[38;5;208m')
 
     def log_error(self, message: str):
+        """
+        Log an error message (red).
+
+        Parameters
+        ----------
+        message : str
+            Message to log.
+
+        Returns
+        -------
+        float
+            Unix timestamp of the log event.
+        """
         return self._log('ERROR', message, output=True, style='\033[38;5;196m')
 
     def dump(self):
+        """
+        Serialise segment state into the session and, if root, finalise it.
+
+        Collects all public attributes (excluding private, excluded, and
+        reduced fields), replaces complex references with their ``uniqueid``
+        or ``repr``, and stores the result in ``session.segments``.  Root
+        segments (rank 0) additionally extract rig data and lock the session.
+
+        Returns
+        -------
+        dict
+            The serialised segment data dict stored in the session.
+        """
         all_data = {k: v for k, v in self.__dict__.items()
                     if k not in self._dump_reducetorepresentations
                     and k not in self._dump_exclusions
@@ -186,6 +389,13 @@ class Segment(ABC):
         return all_data
 
     def _configure(self):
+        """
+        Populate default inheritance and dump control lists.
+
+        Called during ``__post_init__`` before any inheritance takes place.
+        Subclasses should call ``super()._configure()`` and then extend the
+        relevant lists.
+        """
         self._parent_inheritproperties += ['lampyr',
                                            'rig', 'mouse', 'session', '_output_func',
                                            '_verbose']
@@ -194,6 +404,13 @@ class Segment(ABC):
         self._dump_exclusions += ['rig', 'session', 'mouse']
 
     def _inherit(self):
+        """
+        Pull listed properties from the parent segment.
+
+        Sets ``rank`` to one greater than the parent's rank, then copies
+        each property in ``_parent_inheritproperties`` (destructive replace)
+        and combines those in ``_parent_inheritproperties_combine``.
+        """
         if self.parent is None:
             return
         self.rank = self.parent.rank + 1
@@ -205,6 +422,13 @@ class Segment(ABC):
             self._inheritproperty(self.parent, prop, 'combine')
     
     def _inherit_from_lampyr(self):
+        """
+        Fill any ``None`` properties by pulling them from the lampyr instance.
+
+        Only copies a property from lampyr if the segment's own value is
+        currently ``None``, preserving any value already set by parent
+        inheritance.
+        """
         if self.lampyr is None:
             self.log_warning('You are running segments without a lampyr instance.')
             return
@@ -215,6 +439,25 @@ class Segment(ABC):
         
 
     def _inheritproperty(self, source, name: str, mode: Literal['replace', 'combine']):
+        """
+        Copy or merge a single property from ``source`` into this segment.
+
+        Parameters
+        ----------
+        source : object
+            The object to copy from (a parent segment or lampyr instance).
+        name : str
+            Attribute name to inherit.
+        mode : {'replace', 'combine'}
+            ``'replace'`` overwrites the local value; ``'combine'`` merges
+            lists (concatenation) or dicts (update) with the local value.
+
+        Raises
+        ------
+        TypeError
+            If ``mode='combine'`` but the source and local types are
+            incompatible (e.g. list vs dict).
+        """
         if not hasattr(source, name):
             return
         attr = getattr(source, name)
