@@ -785,7 +785,8 @@ class AltWheelStage(ResponseAbstractStage):
                     self.log_notice(f"Normalized ({aw['consecutive_normalized']}/{p['equalize_consecutive']})")
                     if aw['consecutive_normalized'] >= p['equalize_consecutive']:
                         aw['phase'] = 'complete'
-                        self.log_notice('Score fully normalized. AltWheel shaping complete.')
+                        self.mouse.paradigm_stage[self.paradigm_tag] = 'AltWheelDelay'
+                        self.log_notice('Score fully normalized. AltWheel shaping complete. Advancing → AltWheelDelay.')
                 else:
                     aw['consecutive_normalized'] = 0
                     self.log_notice(f"Score at 0 but bias present (sb={sb:.2f}). Resetting counter.")
