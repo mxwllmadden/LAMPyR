@@ -59,7 +59,7 @@ class HabituationTrial(Trial):
     iti1_s: float = 1
     reward_consumption_period_s: float = 15
     reward_consumption_nolick_delay_s: float = 40
-    count_merits: bool = False
+    count_merits: bool = True
     iti2_s: float = 0.5
 
     def setup(self):
@@ -89,7 +89,6 @@ class HabituationTrial(Trial):
                 self.log_abstention()
         self.log_notice(f'Detected {lick_count} licks since reward delivery.')
         self.wait(self.iti2_s)
-        self.finish()
 
 
 @dataclass
@@ -483,7 +482,6 @@ class AltWheelStage1(ResponseAbstractStage):
             self.log_info('No bias detected')
             consecutive_good_sessions += 1
 
-        self.applyadjustmentvalue(adj_val)
         global_paradigm_data['adjustmentvalue'] = adj_val
         stage_data['consecutive_good'] = consecutive_good_sessions
 

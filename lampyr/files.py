@@ -65,8 +65,12 @@ def loadjson(fp):
     object
         Parsed JSON content.
     """
-    with open(fp, 'r') as f:
-        return json.load(f)
+    try:
+        with open(fp, 'r') as f:
+            return json.load(f)
+    except Exception:
+        print(fp)
+        raise
 
 
 def savecsv(fp, data: List[dict]):
