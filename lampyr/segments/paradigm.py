@@ -22,12 +22,12 @@ class ParadigmSegment(Segment):
     paradigm_tag : str or None
         Label used to key into the mouse's ``paradigm_stage`` and
         ``properties`` dicts.  Defaults to ``slug`` if not set.
-    _paradigmdata : dict or None
+    paradigmdata : dict or None
         Reference to the paradigm's persistent data dict from the mouse,
         populated by the root :class:`Paradigm`.
     """
     paradigm_tag : str = None
-    _paradigmdata : dict = None
+    paradigmdata : dict = None
     
     def __post_init__(self):
         """
@@ -39,10 +39,10 @@ class ParadigmSegment(Segment):
 
     def _configure(self):
         """
-        Add ``_paradigmdata`` and ``paradigm_tag`` to the parent-inherit list.
+        Add ``paradigmdata`` and ``paradigm_tag`` to the parent-inherit list.
         """
         super()._configure()
-        self._parent_inheritproperties += ['_paradigmdata',
+        self._parent_inheritproperties += ['paradigmdata',
                                            'paradigm_tag']
 
 class Stage(ParadigmSegment):
@@ -65,10 +65,28 @@ class Stage(ParadigmSegment):
         """
         self.define_sessionparams()
         try:
-            self.define_task()
-        except KeyboardInterrupt as e:
+            stage_paradigm_data = self.paradigmdata.get(self.slug, {})
+            self.define_task(stage_paradigm_data)
+        except KeyboardInterrupt:
             self.log_error('Detected user initiated force quit.')
-        self.define_shaping()
+            self._post_execute()
+            raise
+        self._post_execute()
+            
+    def _post_execute(self):
+        self.log_notice('SESSION SUMMARY:')
+        self.session_summary()
+        if self.paradigmdata is not None:
+            stage_paradigm_data = self.paradigmdata.get(self.slug, None)
+            if stage_paradigm_data is None:
+                stage_paradigm_data = {}
+                self.paradigmdata[self.slug] = stage_paradigm_data
+            self.log_notice('APPLYING SHAPING PROTOCOL:')
+            self.define_shaping(stage_paradigm_data)
+            global_paradigm_data = self.get_globalparadigmdata()
+            self.define_globalshaping(global_paradigm_data)
+        else:
+            self.log_error('Paradigm Data does not exist. Shaping cannot occur.')
     
     @abstractmethod
     def define_sessionparams(self):
@@ -76,14 +94,26 @@ class Stage(ParadigmSegment):
         pass
 
     @abstractmethod
-    def define_task(self):
+    def define_task(self, stage_data):
         """Instantiate and run the task(s) for this stage."""
+        pass
+    
+    @abstractmethod
+    def session_summary(self):
         pass
 
     @abstractmethod
-    def define_shaping(self):
+    def define_shaping(self, stage_data):
         """Evaluate session outcome and update shaping state or advance stage."""
         pass
+    
+    def define_globalshaping(self, global_data):
+        pass
+    
+    def get_globalparadigmdata(self):
+        if 'global' not in self.paradigmdata:
+            self.paradigmdata['global'] = {}
+        return self.paradigmdata['global']
     
     def set_sessionparam(self, param, value):
         """
@@ -105,6 +135,22 @@ class Stage(ParadigmSegment):
             self.log_warning(f'Stage parameter {param} was overridden by user to be {current_val}. If this is not intentional, please quit and remove the override.')
         else:
             setattr(self.session, param, value)
+    
+    def searchsubsegments(self, *args, **kwargs):
+        segments = []
+        for child_id in self.subdata:
+            segments.extend(self.session.search(root=child_id, *args, **kwargs))
+        return segments
+    
+    def summarize_reportsinsegments(self, report, segmentlist):
+        reportcounts = {}
+        for seg_id in segmentlist:
+            seg = self.session.segments[seg_id]
+            val = seg['reports'].get(report, 'NO REPORT FOUND')
+            if val not in reportcounts:
+                reportcounts[val] = 0
+            reportcounts[val] += 1
+        return reportcounts
 
 
 @dataclass
@@ -135,16 +181,8 @@ class Paradigm(ParadigmSegment):
         Reference to ``mouse.properties[slug]``, populated during
         :meth:`execute`.
     """
-
-    # default properites
-    DEFAULT_PROPERTIES : ClassVar[dict] = None
-    STAGES : ClassVar[list] = []
-    
-    # limits on history loading
-    sessionhistory_sessionlimit : int = 2
-    sessionhistory_dayslimit : int = 2
-    
-    _paradigmdata : dict = None
+    paradigmdata : dict = None
+    stagelist : tuple = None
     
     def __post_init__(self):
         """
@@ -161,28 +199,55 @@ class Paradigm(ParadigmSegment):
             raise RuntimeError(f'Attempted to create paradigm {self.name} at a low rank. Paradigms must always be the highest ranked segment.')
         if self.lampyr is None:
             raise RuntimeError('Attempted to run paradigm outside of lampyr.')
-        if not isinstance(self.DEFAULT_PROPERTIES, dict):
-            raise RuntimeError('Failed to set DEFAULT_PROPERTIES class variable.')
+        if self.stagelist is None:
+            raise RuntimeError('stagelist is undefined')
     
     def execute(self):
-        """
-        Bind the mouse's paradigm data and load session history.
-
-        Creates an empty property dict for this paradigm if one does not yet
-        exist, then sets ``_paradigmdata`` to point at it and calls
-        :meth:`_load_sessionhistory`.
-        """
         if self.slug not in self.mouse.properties:
-            self.mouse.properties[self.slug] = {}
-        self._paradigmdata = self.mouse.properties[self.slug]
-        self._load_sessionhistory()
+            self.mouse.properties[self.slug] = {'stage' : None}
+        self.paradigmdata = self.mouse.properties.get(self.slug,{})
+        self._createstagemap()
+        stageid = self.paradigmdata.get('stage', self._defaultstage)
+        if stageid is None:
+            stageid = self._defaultstage
+            self.paradigmdata['stage'] = self._defaultstage
+        if stageid not in self.paradigmdata:
+            self.paradigmdata[stageid] = {}
+        StageClass = self._stagemap[stageid]
+        stage = StageClass(parent=self)
+        try:
+            stage.run()
+        except KeyboardInterrupt:
+            self.define_progression(StageClass, self.paradigmdata[stageid])
+            raise
+        self.define_progression(StageClass)
     
-    def _load_sessionhistory(self):
-        """
-        Load recent session history for this mouse.
-
-        Base implementation is a no-op.  Subclasses may override to pull
-        historical sessions and use them to inform shaping decisions.
-        """
+    def _createstagemap(self):
+        self._stagemap = {}
+        self._defaultstage = self.stagelist[0].slug
+        for stage in self.stagelist:
+            if stage.slug in self._stagemap:
+                raise RuntimeError(f'Detected duplicate {stage.slug} stages')
+            self._stagemap[stage.slug] = stage
+    
+    @abstractmethod
+    def define_progression(self, current_stage, stage_data):
         pass
-        
+    
+    def progress(self):
+        stageid = self.paradigmdata.get('stage', self._defaultstage)
+        for ind, stageclass in enumerate(self.stagelist):
+            if stageid == stageclass.slug:
+                break
+        self.paradigmdata['stage'] = self.stagelist[ind+1].slug
+    
+    def setstagebyclass(self, stageclass):
+        self.setstagebyslug(stageclass.slug)
+    
+    def setstagebyslug(self, slug):
+        if slug not in self._stagemap:
+            raise RuntimeError(f'{slug} not in stagemap')
+    
+    def _configure(self):
+        super()._configure()
+        self._dump_reducetorepresentations += ['stagelist']
