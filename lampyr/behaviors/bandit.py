@@ -147,7 +147,7 @@ class BanditTrial(Trial):
                             description='Wheel response registered')
         self.log_debug(self.rewardprobs_perc)
 
-    def loop(self):
+    def perform(self):
         self.wait(self.iti1_s)
         self.trigger_event('pretrialstart')
         self.log_debug('Waiting for pretrial wheel hold...')
