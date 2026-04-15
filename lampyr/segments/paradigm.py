@@ -220,7 +220,7 @@ class Paradigm(ParadigmSegment):
         except KeyboardInterrupt:
             self.define_progression(StageClass, self.paradigmdata[stageid])
             raise
-        self.define_progression(StageClass)
+        self.define_progression(StageClass,  self.paradigmdata[stageid])
     
     def _createstagemap(self):
         self._stagemap = {}
