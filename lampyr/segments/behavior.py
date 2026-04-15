@@ -379,5 +379,6 @@ class Trial(BehaviorSegment):
         """
         self.log_debug(f'Waiting for {duration} seconds...')
         time.sleep(duration)
+        self.log_debug('Stopped waiting')
         
 
