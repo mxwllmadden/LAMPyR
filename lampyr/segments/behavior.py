@@ -13,22 +13,25 @@ from abc import ABC, abstractmethod
 from lampyr.primatives import Mouse, Session, uniqueid
 from lampyr.segments.abstract import Segment
 
+
+"""
+REFACTOR NEEDED
+
+The plan is for BehaviorSegment to implement all methods and event registration, with Task and Trial
+as subclasses that provide structure for different types of behavior.  Task is for "trialless" behaviors or those
+that include multiple trials, while trial is for discrete trial-based behaviors.
+"""
+
 @dataclass
 class BehaviorSegment(Segment):
-    """
-    Behavior segments adds as setup loop configuration that respects session stopconditions
-    and supports tag and class based overrides by mouse
-
-    Also adds:
-        PROPERTIES
-        REPORTS
-        TAGS
-    """
-    # Context
-    properties: dict = field(default_factory=dict)  # Inherited from parents
+    # Tags allow for tag based mouse overrides and are inherited and combined across the segment hierarchy.
     tags: List[str] = field(default_factory=list)  # Inherited from parents
     # Describe the results of the segment
     reports: dict = field(default_factory=dict)
+    # describe discrete events and timepoints of interest during the segment
+    event_definitions: dict = field(default_factory=dict)
+    event_records: list = field(default_factory=list)
+    _events: dict = field(default_factory=dict)
 
     # Reasons for stopping the session
     stop_reasons: list = field(default_factory=list)
@@ -43,34 +46,51 @@ class BehaviorSegment(Segment):
 
     def _configure(self):
         """
-        Extend base configuration to include ``tags`` in the combine-inherit list.
+        Extend base ``_configure`` to set up inheritance and dumping for behavior-specific attributes.
         """
         super()._configure()
-        self._parent_inheritproperties_combine += ['tags']
+        self._parent_inheritproperties_combine += ['tags', 'event_definitions']
+        self._dump_reducetorepresentations += ['_events']
 
-    def execute(self):
+    def _applyoverrides(self, overrides: dict):
         """
-        Run the setup-loop cycle, polling stop conditions each iteration.
+        Apply a dict of ``{param: value}`` overrides to this segment's attributes.
 
-        Calls :meth:`setup` once, then repeatedly calls :meth:`loop` until
-        the session reports one or more stop conditions.
+        Parameters
+        ----------
+        overrides : dict
+            Mapping of attribute names to override values.  Only attributes
+            that already exist on the segment are updated.
         """
-        self.setup()
-        while True:
-            self.stop_reasons += self.session.evaluatestopconditions()
-            if self.stop_reasons:
-                break
-            self.loop()
-    
-    @abstractmethod
-    def setup(self):
-        """Perform one-time initialisation before the main loop."""
-        pass
+        for param, val in overrides.items():
+            if hasattr(self, param):
+                setattr(self, param, val)
 
-    @abstractmethod
-    def loop(self):
-        """Execute a single iteration of the segment's main loop."""
-        pass
+    def _checkoverrides(self):
+        """
+        Look up and apply mouse-specific parameter overrides for this segment.
+
+        Checks the mouse's ``mouse_behav_param_overrides`` dict for entries
+        keyed by ``'all'``, the segment's ``slug``, and each of its ``tags``,
+        applying any matches via :meth:`_applyoverrides`.
+        """
+        if self.mouse is None:
+            return
+        if 'all' in self.mouse.mouse_behav_param_overrides:
+            overrides = self.mouse.mouse_behav_param_overrides['all']
+            self.log_debug(f'Applying {len(overrides)} overrides')
+            self._applyoverrides(overrides)
+        if self.slug in self.mouse.mouse_behav_param_overrides:
+            overrides = self.mouse.mouse_behav_param_overrides[self.slug]
+            self.log_debug(f'Applying {len(overrides)} overrides associated with ' +
+                          f'{self.slug} slug')
+            self._applyoverrides(overrides)
+        for tag in self.tags:
+            if tag in self.mouse.mouse_behav_param_overrides:
+                overrides = self.mouse.mouse_behav_param_overrides[tag]
+                self.log_debug(f'Applying {len(overrides)} overrides associated with ' +
+                              f'{tag} tag')
+                self._applyoverrides(overrides)
 
     def finish(self):
         """
@@ -181,63 +201,7 @@ class BehaviorSegment(Segment):
         if key in self.reports:
             self.log_warning(f'Overwrote {key} as {value}. This is not recommended behavior.')
         self.reports[key] = value
-
-    def _applyoverrides(self, overrides: dict):
-        """
-        Apply a dict of ``{param: value}`` overrides to this segment's attributes.
-
-        Parameters
-        ----------
-        overrides : dict
-            Mapping of attribute names to override values.  Only attributes
-            that already exist on the segment are updated.
-        """
-        for param, val in overrides.items():
-            if hasattr(self, param):
-                setattr(self, param, val)
-
-    def _checkoverrides(self):
-        """
-        Look up and apply mouse-specific parameter overrides for this segment.
-
-        Checks the mouse's ``mouse_behav_param_overrides`` dict for entries
-        keyed by ``'all'``, the segment's ``slug``, and each of its ``tags``,
-        applying any matches via :meth:`_applyoverrides`.
-        """
-        if self.mouse is None:
-            return
-        if 'all' in self.mouse.mouse_behav_param_overrides:
-            overrides = self.mouse.mouse_behav_param_overrides['all']
-            self.log_debug(f'Applying {len(overrides)} overrides')
-            self._applyoverrides(overrides)
-        if self.slug in self.mouse.mouse_behav_param_overrides:
-            overrides = self.mouse.mouse_behav_param_overrides[self.slug]
-            self.log_debug(f'Applying {len(overrides)} overrides associated with ' +
-                          f'{self.slug} slug')
-            self._applyoverrides(overrides)
-        for tag in self.tags:
-            if tag in self.mouse.mouse_behav_param_overrides:
-                overrides = self.mouse.mouse_behav_param_overrides[tag]
-                self.log_debug(f'Applying {len(overrides)} overrides associated with ' +
-                              f'{tag} tag')
-                self._applyoverrides(overrides)
-                
-@dataclass
-class Task(BehaviorSegment):
-    """
-    Implements methods for trawling for trial data and extracting aggregate information
-    """
-
-
-@dataclass
-class Trial(BehaviorSegment):
-    """
-    Implements event registration and interaction with rig and session to record actions
-    """
-    event_definitions: dict = field(default_factory=dict)
-    event_records: list = field(default_factory=list)
-    _events: dict = field(default_factory=dict)
-
+    
     def register_event(self, name: str,
                        callback: Callable = lambda *args, **kwargs: None,
                        description: str = None):
@@ -247,7 +211,7 @@ class Trial(BehaviorSegment):
         Parameters
         ----------
         name : str
-            Unique event name.  Raises ``RuntimeError`` if already registered.
+            Unique event name.  Logs debug statement if already registered.
         callback : callable, optional
             Function called when the event is triggered.  Receives the trial
             segment as the first argument, followed by any ``*args``/``**kwargs``
@@ -261,7 +225,7 @@ class Trial(BehaviorSegment):
             If ``name`` is already registered on this trial.
         """
         if name in self._events:
-            raise RuntimeError(f'{name} already exists')
+            self.log_debug('Did not create event {name} because it already exists.')
         self._events[name] = callback
         self.event_definitions[name] = {'description': description,
                                         'callback': callback.__repr__()}
@@ -296,8 +260,7 @@ class Trial(BehaviorSegment):
         try:
             self._events[event](self, *args, **kwargs)
         except TypeError:
-            self.log_error(f'Failed to trigger <{
-                           event}> due to incorrect arguments. Event callbacks should accept segment as first argument then *args **kwargs.')
+            self.log_error(f'Failed to trigger <{event}> due to incorrect arguments. Event callbacks should accept segment as first argument then *args **kwargs.')
         self.event_records.append({'time': t,
                                    'event': event,
                                    'args': args,
@@ -309,24 +272,112 @@ class Trial(BehaviorSegment):
                                        'kwargs': kwargs})
         return t
     
+
+                
+@dataclass
+class Task(BehaviorSegment):
+    """
+    Implements methods for trawling for trial data and extracting aggregate information
+    """
+    _LOOP_DELAY : float = 0.01
     def execute(self):
         """
-        Run setup, then loop until ``stop_reasons`` is non-empty, then log the trial.
+        Run the setup-loop cycle, polling stop conditions each iteration.
 
-        Unlike :class:`BehaviorSegment`, stop conditions are not polled from
-        the session here; subclasses append to ``stop_reasons`` directly (e.g.
-        via :meth:`~BehaviorSegment.finish`).
+        Calls :meth:`setup` once, then repeatedly calls :meth:`loop` until
+        the session reports one or more stop conditions.
         """
         self.setup()
         while True:
+            self.stop_reasons += self.session.evaluatestopconditions()
             if self.stop_reasons:
                 break
             self.loop()
+            time.sleep(self._LOOP_DELAY)
+    
+    @abstractmethod
+    def setup(self):
+        """Perform one-time initialisation before the main loop."""
+        pass
+
+    @abstractmethod
+    def loop(self):
+        """Execute a single iteration of the segment's main loop."""
+        pass
+
+
+@dataclass
+class Trial(BehaviorSegment):
+    def execute(self):
+        """
+        Run the trial, calling :meth:`setup` once and :meth:`perform` until completion.
+        """
+        self.setup()
+        self.perform()
         self.log_trial()
+        self.finish()
+    
+    @abstractmethod
+    def setup(self):
+        """Perform one-time initialisation before the main loop."""
+        pass
+
+    @abstractmethod
+    def perform(self):
+        """Trial Logic goes here."""
+        pass
+    
+    def waitfor(
+        self,
+        condition,
+        fallback_value=None,
+        timeout=None,
+        poll_interval=0.05,
+        while_waiting=None,
+        while_waiting_interval=0.5,
+    ):
+        if poll_interval <= 0:
+            raise ValueError("poll_interval must be > 0")
+        if while_waiting is not None and while_waiting_interval <= 0:
+            raise ValueError("while_waiting_interval must be > 0")
+    
+        now = time.monotonic
+        deadline = None if timeout is None else now() + timeout
+        next_callback = None if while_waiting is None else now() + while_waiting_interval
+    
+        while True:
+            result = condition()
+            if result:
+                return result
+    
+            current = now()
+            if deadline is not None and current >= deadline:
+                return fallback_value
+    
+            if next_callback is not None and current >= next_callback:
+                while_waiting()
+                next_callback = current + while_waiting_interval
+                continue
+    
+            sleep_for = poll_interval
+            if deadline is not None:
+                sleep_for = min(sleep_for, deadline - current)
+            if next_callback is not None:
+                sleep_for = min(sleep_for, next_callback - current)
+    
+            time.sleep(max(0, sleep_for))
+
+    
+    def wait(self, duration: float):
+        """
+        Block for a specified duration.
+
+        Parameters
+        ----------
+        duration : float
+            Time to wait in seconds.
+        """
+        self.log_debug(f'Waiting for {duration} seconds...')
+        time.sleep(duration)
         
-    def _configure(self):
-        """
-        Extend base configuration to reduce ``event_definitions`` to reprs on dump.
-        """
-        super()._configure()
-        self._dump_reducetorepresentations += ['event_definitions']
+

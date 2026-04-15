@@ -283,7 +283,7 @@ class Segment(ABC):
         """
         return self._log('DEBUG', message, output=self._verbose, style='\x1b[90m')
     
-    def log_notice(self, message: str, delay=None):
+    def log_notice(self, message: str):
         """
         Log a notice message (yellow).
 
@@ -299,14 +299,7 @@ class Segment(ABC):
         float
             Unix timestamp of the log event.
         """
-        if delay is None:
-            return self._log('NOTICE', message, output=True, style='\033[93m')
-        if message != self._last_log_notice or self._last_log_notice_t + delay < time.time():
-            self._last_log_notice = message
-            self._last_log_notice_t = time.time()
-            return self._log('NOTICE', message, output=True, style='\033[93m')
-        return time.time()
-
+        return self._log('NOTICE', message, output=True, style='\033[93m')
     
     def log_warning(self, message: str):
         """

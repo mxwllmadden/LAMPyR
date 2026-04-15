@@ -139,7 +139,11 @@ def mouse_list(lampyr):
     for mid in mids:
         mouse = lampyr.datamanager.loadmouse(mid)
         paradigm = mouse.paradigm or 'none'
-        stage = mouse.paradigm_stage.get(mouse.paradigm, 'none') if mouse.paradigm else 'none'
+        if mouse.paradigm is not None:
+            paradigm_data = mouse.properties.get(mouse.paradigm, {})
+            stage = paradigm_data.get('stage', 'pending...')
+        else:
+            stage = '-'
         if mouse.history:
             last_entry = mouse.history[-1]
             last = _time_ago(float(last_entry['starttime']))
@@ -225,21 +229,21 @@ def mouse_paradigm(lampyr, mouseid, paradigm_name, stage):
             if valid_stages and stage not in valid_stages:
                 click.echo(f'Invalid stage "{stage}". Valid stages: {", ".join(valid_stages)}')
                 return
-            lampyr.mouse.paradigm_stage[current_paradigm] = stage
+            lampyr.mouse.properties[current_paradigm]['stage'] = stage
             click.echo(f'Set {mouseid} stage → {stage} (paradigm: {current_paradigm})')
             lampyr.mousemanager.save()
             return
         # Dump current paradigm info
         m = lampyr.mouse
-        click.echo(f'\nParadigm:  {m.paradigm or "(none)"}')
-        click.echo(f'Stages:    {m.paradigm_stage or "(none)"}')
-        pdata = m.properties
+        current_paradigm = m.paradigm
+        pdata = m.properties.get(current_paradigm,{})
         if pdata:
-            click.echo('Paradigm data:')
+            click.echo(f'Paradigm data for {current_paradigm}:')
             import json
             click.echo(json.dumps(pdata, indent=2))
         else:
-            click.echo('Paradigm data: (none)')
+            click.echo(f'Paradigm data for {current_paradigm}:')
+            click.echo('None')
         return
 
     # Set paradigm
@@ -251,11 +255,12 @@ def mouse_paradigm(lampyr, mouseid, paradigm_name, stage):
 
     if stage is not None:
         paradigm_cls = lampyr.behaviors.get(paradigm_name)
-        valid_stages = getattr(paradigm_cls, 'STAGES', [])
+        valid_stages_cls = getattr(paradigm_cls, 'stagelist', ())
+        valid_stages = [v.slug for v in valid_stages_cls]
         if valid_stages and stage not in valid_stages:
             click.echo(f'Invalid stage "{stage}". Valid stages: {", ".join(valid_stages)}')
             return
-        lampyr.mouse.paradigm_stage[paradigm_name] = stage
+        lampyr.mouse.properties[paradigm_name]['stage'] = stage
         click.echo(f'Set {mouseid} stage → {stage} (paradigm: {paradigm_name})')
 
     lampyr.mousemanager.save()

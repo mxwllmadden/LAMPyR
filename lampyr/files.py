@@ -12,7 +12,7 @@ import numpy as np
 import pickle
 import json
 import glob
-from dataclasses import is_dataclass, asdict
+from dataclasses import is_dataclass, asdict, fields
 from lampyr.primatives import Session, Mouse
 from lampyr.config import Config
 import shutil
@@ -480,5 +480,8 @@ def loadmousefile(mouseid: str,
     
     if os.path.exists(mouse_csv_fp):
         mouse_data['history'] = loadcsv(mouse_csv_fp)
+        
+    allowed = {f.name for f in fields(Mouse)}
+    mouse_data = {k: v for k, v in mouse_data.items() if k in allowed}
     
     return Mouse(**mouse_data)
