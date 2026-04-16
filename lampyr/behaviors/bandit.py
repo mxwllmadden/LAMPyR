@@ -396,14 +396,14 @@ class ResponseAbstractStage(Stage):
         trials = self.searchsubsegments(slug='BanditTrial', type='Trial')
         responsecounts = self.summarize_reportsinsegments('response', trials)
         for resp, num in responsecounts.items():
-            self.log_notice(f'Detected {num} {resp} responses.')
+            self.log_info(f'Detected {num} {resp} responses.')
         sb_metric = self._compute_sb_metric()
         if sb_metric is None:
-            self.log_notice(
+            self.log_info(
                 'Sidebias could not be calculated due to no responses.')
         else:
             sb_perc = (sb_metric * 50) + 50
-            self.log_notice(
+            self.log_info(
                 f'Sidebias was: {round(sb_metric, 2)} ({round(sb_perc)}% Right)'
             )
 
@@ -445,10 +445,11 @@ class AnyWheelStage(ResponseAbstractStage):
             return
         if self.session.participation >= 150:
             consecutive_good_sessions += 1
+            self.log_info('This session was a good session (>150 responses)')
         else:
             consecutive_good_sessions = 0
         
-        self.log_notice(f'Number of consecutive good sessions is {consecutive_good_sessions}')
+        self.log_info(f'Number of consecutive good sessions is {consecutive_good_sessions}')
         stage_data['consecutive_good'] = consecutive_good_sessions
 
 
@@ -482,21 +483,28 @@ class AltWheelStage1(ResponseAbstractStage):
 
         if side_bias is None or self.session.duration < 30:
             return
-
-        if side_bias < -0.2:
-            self.log_notice('Leftward bias detected')
-            adj_val -= 5
+        
+        def sign(x): return 1 if x > 0 else -1 if x < 0 else 0
+        def signdiff(x,y): return (sign(x) * sign(y)) == -1
+        
+        bias = ('Leftward', 'Rightward')[sign(side_bias)]
+        
+        if adj_val == 0: #No adjustment value set
+            self.log_info('Assigning adjustment value for first time')
+            new_adj_val = 5*sign(side_bias)
             consecutive_good_sessions = 0
-        elif side_bias > 0.2:
-            self.log_notice('Rightward bias detected')
-            adj_val += 5
+        elif abs(side_bias) > 0.2:
+            self.log_info(f'{bias} bias detected. Adjustment value updated.')
+            new_adj_val += 5*sign(side_bias)
             consecutive_good_sessions = 0
         else:
-            self.log_notice('No bias detected')
+            self.log_info('This was a good session (no side bias detected)')
+            new_adj_val = adj_val
             consecutive_good_sessions += 1
+        
             
-        self.log_notice('Adjustment Value is ' + str(adj_val))
-        self.log_notice('Consecutive good sessions is ' + str(consecutive_good_sessions))
+        self.log_info('Adjustment Value is ' + str(adj_val))
+        self.log_info('Consecutive good sessions is ' + str(consecutive_good_sessions))
         global_paradigm_data['adjustmentvalue'] = adj_val
         stage_data['consecutive_good'] = consecutive_good_sessions
 
@@ -534,19 +542,21 @@ class AltWheelStage2(ResponseAbstractStage):
 
         # If side bias is against adjustment value, return by 2
         def sign(x): return 1 if x > 0 else -1 if x < 0 else 0
+        def signdiff(x,y): return (sign(x) * sign(y)) == -1
+        
+        bias = ('Leftward', 'Rightward')[sign(side_bias)]
 
         if (adj_val == 0 and (-0.1 < side_bias < 0.1)
                 and self.session.merit > 150):
-            self.log_notice('No bias at adjustment score zero')
+            self.log_info('No bias at adjustment score zero')
             consecutive_good_sessions += 1
 
-        if (sign(side_bias) != sign(adj_val)
-                or abs(side_bias) < 0.1):
-            self.log_notice(f'No bias at adjustment score {adj_val}')
+        if signdiff(side_bias, adj_val) or abs(side_bias) < 0.1:
+            self.log_info(f'No/opposite bias at adjustment score {adj_val}')
             adj_val = adj_val - (sign(adj_val) * min(abs(adj_val), 2))
         
-        self.log_notice('Adjustment Value is ' + str(adj_val))
-        self.log_notice('Consecutive good sessions is ' + str(consecutive_good_sessions))
+        self.log_info('Adjustment Value is ' + str(adj_val))
+        self.log_info('Consecutive good sessions is ' + str(consecutive_good_sessions))
         global_paradigm_data['adjustmentvalue'] = adj_val
         stage_data['consecutive_good'] = consecutive_good_sessions
 
@@ -584,7 +594,8 @@ class AltWheelDelayStage(ResponseAbstractStage):
             return
 
         if current_delay < (len(self.delay_progression)-1):
-            if self.session.merit > 140:
+            if self.session.merit > 150:
+                self.log_info('This was a good session (>150 merit)')
                 self.log_notice('Increasing reward delay...')
                 current_delay += 1
         else:
@@ -593,8 +604,8 @@ class AltWheelDelayStage(ResponseAbstractStage):
             else:
                 consecutive_good_sessions = 0
         
-        self.log_notice('Current delay is ' + str(self.delay_progression[current_delay]))
-        self.log_notice('Consecutive good sessions is ' + str(consecutive_good_sessions))
+        self.log_info('Current delay is ' + str(self.delay_progression[current_delay]))
+        self.log_info('Consecutive good sessions is ' + str(consecutive_good_sessions))
         stage_data['consecutive_good'] = consecutive_good_sessions
         stage_data['current_delay'] = current_delay
 
@@ -623,6 +634,7 @@ class BanditTrainingStage(ResponseAbstractStage):
             return
 
         if self.session.merit > 150:
+            self.log_info('This was a good session (merit > 150)')
             consecutive_good_sessions += 1
         else:
             consecutive_good_sessions = 0
