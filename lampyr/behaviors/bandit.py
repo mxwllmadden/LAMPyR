@@ -74,9 +74,11 @@ class HabituationTrial(Trial):
         """
         # Start behavior
         self.wait(self.iti1_s)
+        self.log_info('Reward dispensed')
         rewarddelivery_time = self.trigger_event('reward')
         self.wait(self.reward_consumption_period_s)
         if not self.rig.licks.since(rewarddelivery_time):
+            self.log_info(f'No licks detected  in {self.reward_consumption_period_s} seconds, waiting...')
             self.wait(self.reward_consumption_nolick_delay_s)
         lick_count = self.rig.licks.since(rewarddelivery_time)
         if lick_count > 0:
@@ -149,7 +151,7 @@ class BanditTrial(Trial):
     def perform(self):
         self.wait(self.iti1_s)
         self.trigger_event('pretrialstart')
-        self.log_debug('Waiting for pretrial wheel hold...')
+        self.log_info('Waiting for pretrial wheel hold...')
         self.waitfor(
             condition=lambda: self.rig.wheel.movement_total_since(
                 time.time()-self.pt_hold_s) < self.pt_mvmt_threshold_deg,
@@ -159,6 +161,7 @@ class BanditTrial(Trial):
                 'Animal movement detected. Waiting for cessation.'),
             while_waiting_interval=4
         )
+        self.log_info('Trial start')
         tstart_time = self.trigger_event('trialstart')
         self.rig.wheel.home()
         response = self.waitfor(
@@ -175,20 +178,27 @@ class BanditTrial(Trial):
         if self.rewardprobs_perc[response] == highestrewardprob:
             self.log_merit()
             self.create_report('best_response', True)
+            was_best = True
         else:
             if response == 'None':
                 self.log_abstention()
             else:
                 self.log_demerit()
             self.create_report('best_response', False)
+            was_best = False
+        self.log_info(f'Response was {response} ('
+                        + ('not ' * (not was_best))
+                        + 'best response')
         probability = self.rewardprobs_perc[response] / 100
         rand = random.random()
         self.log_debug(f'RAND:{rand},THRESH:{probability}')
         if rand < probability:
+            self.log_info(f'Reward given ({round(probability*100)})% chance.')
             self.wait(self.reward_delay_s)
             self.trigger_event('reward')
             self.create_report('rewarded', True)
         else:
+            self.log_info(f'No reward given ({round(probability*100)})% chance.')
             self.create_report('rewarded', False)
         self.wait(self.iti2_s)
 
@@ -217,11 +227,11 @@ class BanditTrial(Trial):
             return False
         match counttype:
             case 'Reward':
-                return bool(self.reports['rewarded'])
+                return bool(self.reports.get('rewarded', False))
             case 'Merit':
-                return bool(self.reports['best_response'])
+                return bool(self.reports.get('best_response', False))
             case 'RewardedMerit':
-                return bool(self.reports['rewarded']) and bool(self.reports['best_response'])
+                return bool(self.reports.get('rewarded', False)) and bool(self.reports.get('best_response', False))
 
 
 @dataclass
@@ -279,6 +289,9 @@ class BanditTask(Task):
                         self._target = 'Left'
                     case 'Any':
                         self._target = 'Any'
+                self.log_notice(f'Target has been switched to {self._target}')
+                self.log_notice('Blocksize is set to '
+                                + str(self._thisblocksize))
         del trial
         
         self._rescue_sincelast += 1
@@ -286,6 +299,7 @@ class BanditTask(Task):
             and self.session.serial_abstention >= self.rescue_threshold
             and self._rescue_count < self.rescue_limit
                 and self._rescue_sincelast >= self.rescue_cooldown):
+            self.log_notice('Attempting to rescue performance...')
             rescue_trial = HabituationTrial(parent=self,
                                      slug='Rescue',
                                      count_merits=False,
@@ -358,10 +372,6 @@ class ResponseAbstractStage(Stage):
         self.set_sessionparam('serial_abstention_limit', 30)
         self.set_sessionparam('reward_limit', 200)
 
-    def define_shaping(self):
-        """Base shaping: log response summary only."""
-        self.sessionsummary()
-
     def _compute_sb_metric(self):
         """Returns (Right - Left) / (Right + Left), or None if no directional responses."""
         trials = self.searchsubsegments(slug='BanditTrial', type='Trial')
@@ -393,8 +403,9 @@ class ResponseAbstractStage(Stage):
                 'Sidebias could not be calculated due to no responses.')
         else:
             sb_perc = (sb_metric * 50) + 50
-            self.log_notice(f'Sidebias was: {round(
-                sb_metric, 2)} ({round(sb_perc)}% Right)')
+            self.log_notice(
+                f'Sidebias was: {round(sb_metric, 2)} ({round(sb_perc)}% Right)'
+            )
 
 
 @dataclass
@@ -436,6 +447,8 @@ class AnyWheelStage(ResponseAbstractStage):
             consecutive_good_sessions += 1
         else:
             consecutive_good_sessions = 0
+        
+        self.log_notice(f'Number of consecutive good sessions is {consecutive_good_sessions}')
         stage_data['consecutive_good'] = consecutive_good_sessions
 
 
@@ -471,17 +484,19 @@ class AltWheelStage1(ResponseAbstractStage):
             return
 
         if side_bias < -0.2:
-            self.log_info('Leftward bias detected')
+            self.log_notice('Leftward bias detected')
             adj_val -= 5
             consecutive_good_sessions = 0
         elif side_bias > 0.2:
-            self.log_info('Rightward bias detected')
+            self.log_notice('Rightward bias detected')
             adj_val += 5
             consecutive_good_sessions = 0
         else:
-            self.log_info('No bias detected')
+            self.log_notice('No bias detected')
             consecutive_good_sessions += 1
-
+            
+        self.log_notice('Adjustment Value is ' + str(adj_val))
+        self.log_notice('Consecutive good sessions is ' + str(consecutive_good_sessions))
         global_paradigm_data['adjustmentvalue'] = adj_val
         stage_data['consecutive_good'] = consecutive_good_sessions
 
@@ -513,7 +528,7 @@ class AltWheelStage2(ResponseAbstractStage):
         global_paradigm_data = self.get_globalparadigmdata()
         adj_val = global_paradigm_data.get('adjustmentvalue', 0)
         side_bias = self._compute_sb_metric()
-
+        
         if side_bias is None or self.session.duration < 30:
             return
 
@@ -522,12 +537,16 @@ class AltWheelStage2(ResponseAbstractStage):
 
         if (adj_val == 0 and (-0.1 < side_bias < 0.1)
                 and self.session.merit > 150):
+            self.log_notice('No bias at adjustment score zero')
             consecutive_good_sessions += 1
 
         if (sign(side_bias) != sign(adj_val)
                 or abs(side_bias) < 0.1):
+            self.log_notice(f'No bias at adjustment score {adj_val}')
             adj_val = adj_val - (sign(adj_val) * min(abs(adj_val), 2))
-
+        
+        self.log_notice('Adjustment Value is ' + str(adj_val))
+        self.log_notice('Consecutive good sessions is ' + str(consecutive_good_sessions))
         global_paradigm_data['adjustmentvalue'] = adj_val
         stage_data['consecutive_good'] = consecutive_good_sessions
 
@@ -566,13 +585,16 @@ class AltWheelDelayStage(ResponseAbstractStage):
 
         if current_delay < (len(self.delay_progression)-1):
             if self.session.merit > 140:
+                self.log_notice('Increasing reward delay...')
                 current_delay += 1
         else:
             if self.session.merit > 150:
                 consecutive_good_sessions += 1
             else:
                 consecutive_good_sessions = 0
-
+        
+        self.log_notice('Current delay is ' + str(self.delay_progression[current_delay]))
+        self.log_notice('Consecutive good sessions is ' + str(consecutive_good_sessions))
         stage_data['consecutive_good'] = consecutive_good_sessions
         stage_data['current_delay'] = current_delay
 
@@ -604,7 +626,9 @@ class BanditTrainingStage(ResponseAbstractStage):
             consecutive_good_sessions += 1
         else:
             consecutive_good_sessions = 0
-
+        
+        
+        self.log_notice('Consecutive good sessions is ' + str(consecutive_good_sessions))
         stage_data['consecutive_good'] = consecutive_good_sessions
 
 

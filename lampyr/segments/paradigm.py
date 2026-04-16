@@ -218,8 +218,10 @@ class Paradigm(ParadigmSegment):
         try:
             stage.run()
         except KeyboardInterrupt:
+            self.log_notice('CHECKING FOR PROGRESSION CRITERIA:')
             self.define_progression(StageClass, self.paradigmdata[stageid])
             raise
+        self.log_notice('CHECKING FOR PROGRESSION CRITERIA:')
         self.define_progression(StageClass,  self.paradigmdata[stageid])
     
     def _createstagemap(self):
