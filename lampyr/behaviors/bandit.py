@@ -187,9 +187,9 @@ class BanditTrial(Trial):
             self.create_report('best_response', False)
             was_best = False
         self.log_info(f'Response was {response} ('
-                        + ('not ' * (not was_best))
-                        + 'best response')
-        probability = self.rewardprobs_perc[response] / 100
+                      + ('not ' * (not was_best))
+                      + 'best response)')
+        probability = self.rewardprobs_perc.get(response, 0) / 100
         rand = random.random()
         self.log_debug(f'RAND:{rand},THRESH:{probability}')
         if rand < probability:
@@ -198,7 +198,8 @@ class BanditTrial(Trial):
             self.trigger_event('reward')
             self.create_report('rewarded', True)
         else:
-            self.log_info(f'No reward given ({round(probability*100)})% chance.')
+            self.log_info(
+                f'No reward given ({round(probability*100)})% chance.')
             self.create_report('rewarded', False)
         self.wait(self.iti2_s)
 
@@ -274,7 +275,7 @@ class BanditTask(Task):
                             reward_delay_s=self.reward_delay_s,
                             rewardprobs_perc=self._reward_probs[self._target])
         trial.run()
-        
+
         if self.taskblocks_enabled:
             if trial.satisfiesblockcondition(self.taskblocks_blockcounttype):
                 self._trialinblockcount += 1
@@ -293,7 +294,7 @@ class BanditTask(Task):
                 self.log_notice('Blocksize is set to '
                                 + str(self._thisblocksize))
         del trial
-        
+
         self._rescue_sincelast += 1
         if (self.rescue_trial_enabled
             and self.session.serial_abstention >= self.rescue_threshold
@@ -301,12 +302,12 @@ class BanditTask(Task):
                 and self._rescue_sincelast >= self.rescue_cooldown):
             self.log_notice('Attempting to rescue performance...')
             rescue_trial = HabituationTrial(parent=self,
-                                     slug='Rescue',
-                                     count_merits=False,
-                                     iti1_s=60,
-                                     reward_consumption_period_s=30,
-                                     reward_consumption_nolick_delay_s=60,
-                                     iti2_s=0.5)
+                                            slug='Rescue',
+                                            count_merits=False,
+                                            iti1_s=60,
+                                            reward_consumption_period_s=30,
+                                            reward_consumption_nolick_delay_s=60,
+                                            iti2_s=0.5)
             rescue_trial.run()
             del rescue_trial
             self._rescue_count += 1
@@ -338,7 +339,7 @@ class HabituationStage(Stage):
         task = RewardedHabituationTask(parent=self)
         task.run()
         del task
-    
+
     def session_summary(self):
         pass
 
@@ -445,11 +446,12 @@ class AnyWheelStage(ResponseAbstractStage):
             return
         if self.session.participation >= 150:
             consecutive_good_sessions += 1
-            self.log_info('This session was a good session (>150 responses)')
+            self.log_info('This session was a good session (>=150 responses)')
         else:
             consecutive_good_sessions = 0
-        
-        self.log_info(f'Number of consecutive good sessions is {consecutive_good_sessions}')
+
+        self.log_info(
+            f'Number of consecutive good sessions is {consecutive_good_sessions}')
         stage_data['consecutive_good'] = consecutive_good_sessions
 
 
@@ -483,13 +485,18 @@ class AltWheelStage1(ResponseAbstractStage):
 
         if side_bias is None or self.session.duration < 30:
             return
-        
+
         def sign(x): return 1 if x > 0 else -1 if x < 0 else 0
-        def signdiff(x,y): return (sign(x) * sign(y)) == -1
-        
-        bias = ('Leftward', 'Rightward')[sign(side_bias)]
-        
-        if adj_val == 0: #No adjustment value set
+        def signdiff(x, y): return (sign(x) * sign(y)) == -1
+
+        if side_bias < 0:
+            bias = 'Leftward'
+        elif side_bias > 0:
+            bias = 'Rightward'
+        else:
+            bias = 'Neutral'
+
+        if adj_val == 0:  # No adjustment value set
             self.log_info('Assigning adjustment value for first time')
             adj_val += 5*sign(side_bias)
             consecutive_good_sessions = 0
@@ -498,16 +505,18 @@ class AltWheelStage1(ResponseAbstractStage):
                 self.log_info('Adjustment value has overshot bias')
                 self.log_info('This was a good session (contrary side bias)')
             else:
-                self.log_info(f'{bias} bias detected. Adjustment value updated.')
-                adj_val += 5*sign(side_bias) 
+                self.log_info(
+                    f'{bias} bias detected. Adjustment value updated.')
+                adj_val += 5*sign(side_bias)
                 consecutive_good_sessions = 0
         else:
             self.log_info('This was a good session (no side bias detected)')
             consecutive_good_sessions += 1
-        
-            
+
         self.log_info('Adjustment Value is ' + str(adj_val))
-        self.log_info('Consecutive good sessions is ' + str(consecutive_good_sessions))
+        self.log_info('Consecutive good sessions is ' +
+                      str(consecutive_good_sessions))
+        adj_val = max(-40, min(40, adj_val))
         global_paradigm_data['adjustmentvalue'] = adj_val
         stage_data['consecutive_good'] = consecutive_good_sessions
 
@@ -539,27 +548,37 @@ class AltWheelStage2(ResponseAbstractStage):
         global_paradigm_data = self.get_globalparadigmdata()
         adj_val = global_paradigm_data.get('adjustmentvalue', 0)
         side_bias = self._compute_sb_metric()
-        
+
         if side_bias is None or self.session.duration < 30:
             return
 
         # If side bias is against adjustment value, return by 2
         def sign(x): return 1 if x > 0 else -1 if x < 0 else 0
-        def signdiff(x,y): return (sign(x) * sign(y)) == -1
-        
-        bias = ('Leftward', 'Rightward')[sign(side_bias)]
+        def signdiff(x, y): return (sign(x) * sign(y)) == -1
+
+        if side_bias < 0:
+            bias = 'Leftward'
+        elif side_bias > 0:
+            bias = 'Rightward'
+        else:
+            bias = 'Neutral'
 
         if (adj_val == 0 and (-0.1 < side_bias < 0.1)
-                and self.session.merit > 150):
+                and self.session.merit >= 150):
             self.log_info('No bias at adjustment score zero')
             consecutive_good_sessions += 1
+        else:
+            self.log_info(f'{bias} bias detected')
+            consecutive_good_sessions = 0
 
         if signdiff(side_bias, adj_val) or abs(side_bias) < 0.1:
             self.log_info(f'No/opposite bias at adjustment score {adj_val}')
             adj_val = adj_val - (sign(adj_val) * min(abs(adj_val), 2))
-        
+
         self.log_info('Adjustment Value is ' + str(adj_val))
-        self.log_info('Consecutive good sessions is ' + str(consecutive_good_sessions))
+        self.log_info('Consecutive good sessions is ' +
+                      str(consecutive_good_sessions))
+        adj_val = max(-40, min(40, adj_val))
         global_paradigm_data['adjustmentvalue'] = adj_val
         stage_data['consecutive_good'] = consecutive_good_sessions
 
@@ -573,7 +592,7 @@ class AltWheelDelayStage(ResponseAbstractStage):
     advancing to ``'BanditTraining'`` once the longest delay step is reached.
     """
     slug: str = 'Stage4AltWheelDelay'
-    delay_progression = (0, 0.1, 0.25, 0.5, 1)
+    delay_progression = (0.1, 0.25, 0.5, 1)
 
     def define_task(self, stage_data):
         """Run the alternating bandit task with 100/0 reward probabilities."""
@@ -598,7 +617,7 @@ class AltWheelDelayStage(ResponseAbstractStage):
 
         if current_delay < (len(self.delay_progression)-1):
             if self.session.merit > 150:
-                self.log_info('This was a good session (>150 merit)')
+                self.log_info('This was a good session (>=150 merit)')
                 self.log_notice('Increasing reward delay...')
                 current_delay += 1
         else:
@@ -606,9 +625,11 @@ class AltWheelDelayStage(ResponseAbstractStage):
                 consecutive_good_sessions += 1
             else:
                 consecutive_good_sessions = 0
-        
-        self.log_info('Current delay is ' + str(self.delay_progression[current_delay]))
-        self.log_info('Consecutive good sessions is ' + str(consecutive_good_sessions))
+
+        self.log_info('Current delay is ' +
+                      str(self.delay_progression[current_delay]))
+        self.log_info('Consecutive good sessions is ' +
+                      str(consecutive_good_sessions))
         stage_data['consecutive_good'] = consecutive_good_sessions
         stage_data['current_delay'] = current_delay
 
@@ -641,9 +662,9 @@ class BanditTrainingStage(ResponseAbstractStage):
             consecutive_good_sessions += 1
         else:
             consecutive_good_sessions = 0
-        
-        
-        self.log_notice('Consecutive good sessions is ' + str(consecutive_good_sessions))
+
+        self.log_notice('Consecutive good sessions is ' +
+                        str(consecutive_good_sessions))
         stage_data['consecutive_good'] = consecutive_good_sessions
 
 
@@ -667,14 +688,14 @@ class BanditEndStage(ResponseAbstractStage):
 
 @dataclass
 class BanditParadigm(Paradigm):
-    slug : str = 'BanditParadigm2'
+    slug: str = 'BanditParadigm2'
     stagelist: tuple = (HabituationStage,
-                       AnyWheelStage,
-                       AltWheelStage1,
-                       AltWheelStage2,
-                       AltWheelDelayStage,
-                       BanditTrainingStage,
-                       BanditEndStage)
+                        AnyWheelStage,
+                        AltWheelStage1,
+                        AltWheelStage2,
+                        AltWheelDelayStage,
+                        BanditTrainingStage,
+                        BanditEndStage)
 
     def define_progression(self, current_stage, stage_data):
         if current_stage is HabituationStage:
@@ -697,4 +718,3 @@ class BanditParadigm(Paradigm):
                 self.progress()
         elif current_stage is BanditEndStage:
             pass
-
