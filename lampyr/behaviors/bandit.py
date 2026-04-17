@@ -491,15 +491,18 @@ class AltWheelStage1(ResponseAbstractStage):
         
         if adj_val == 0: #No adjustment value set
             self.log_info('Assigning adjustment value for first time')
-            new_adj_val = 5*sign(side_bias)
+            adj_val += 5*sign(side_bias)
             consecutive_good_sessions = 0
         elif abs(side_bias) > 0.2:
-            self.log_info(f'{bias} bias detected. Adjustment value updated.')
-            new_adj_val += 5*sign(side_bias)
-            consecutive_good_sessions = 0
+            if signdiff(adj_val, side_bias):
+                self.log_info('Adjustment value has overshot bias')
+                self.log_info('This was a good session (contrary side bias)')
+            else:
+                self.log_info(f'{bias} bias detected. Adjustment value updated.')
+                adj_val += 5*sign(side_bias) 
+                consecutive_good_sessions = 0
         else:
             self.log_info('This was a good session (no side bias detected)')
-            new_adj_val = adj_val
             consecutive_good_sessions += 1
         
             
