@@ -498,12 +498,16 @@ class AltWheelStage1(ResponseAbstractStage):
 
         if adj_val == 0:  # No adjustment value set
             self.log_info('Assigning adjustment value for first time')
-            adj_val += 5*sign(side_bias)
-            consecutive_good_sessions = 0
+            if side_bias == 0:
+                consecutive_good_sessions += 1
+            else:
+                adj_val += 5*sign(side_bias)
+                consecutive_good_sessions = 0
         elif abs(side_bias) > 0.2:
             if signdiff(adj_val, side_bias):
                 self.log_info('Adjustment value has overshot bias')
                 self.log_info('This was a good session (contrary side bias)')
+                consecutive_good_sessions += 1
             else:
                 self.log_info(
                     f'{bias} bias detected. Adjustment value updated.')
@@ -616,12 +620,12 @@ class AltWheelDelayStage(ResponseAbstractStage):
             return
 
         if current_delay < (len(self.delay_progression)-1):
-            if self.session.merit > 150:
+            if self.session.merit >= 150:
                 self.log_info('This was a good session (>=150 merit)')
                 self.log_notice('Increasing reward delay...')
                 current_delay += 1
         else:
-            if self.session.merit > 150:
+            if self.session.merit >= 150:
                 consecutive_good_sessions += 1
             else:
                 consecutive_good_sessions = 0
@@ -657,8 +661,8 @@ class BanditTrainingStage(ResponseAbstractStage):
         if self.session.duration < 30:
             return
 
-        if self.session.merit > 150:
-            self.log_info('This was a good session (merit > 150)')
+        if self.session.merit >= 150:
+            self.log_info('This was a good session (merit >= 150)')
             consecutive_good_sessions += 1
         else:
             consecutive_good_sessions = 0
