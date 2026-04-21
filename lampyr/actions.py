@@ -96,7 +96,7 @@ def start_rig(lampyr : Lampyr):
         click.echo('Command aborted because rig is not configured')
         click.echo('\nUse "lampyr rig configure" to configure rig')
         raise Abort()
-    if lampyr.config.get('rig.calibrated') < time.time() - 43200:
+    if lampyr.config.get('rig.calibrated') < time.time() - 129600:
         click.echo('Command aborted because rig is not calibrated')
         click.echo('\nUse "lampyr rig calibrate" to calibrate rig')
         raise Abort()
