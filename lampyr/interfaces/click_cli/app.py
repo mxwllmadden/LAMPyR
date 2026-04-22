@@ -152,7 +152,7 @@ def mouse_list(lampyr):
         else:
             last, merit, rewards = 'never', '', ''
         rows.append((mid, paradigm, stage, last, merit, rewards))
-
+    rows = sorted(rows, key = lambda x : x[0])
     headers = ('NAME', 'PARADIGM', 'STAGE', 'LAST SESSION', 'MERIT', 'REWARDS')
     widths = [max(len(h), max((len(r[i]) for r in rows), default=0))
               for i, h in enumerate(headers)]
