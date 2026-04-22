@@ -5,7 +5,6 @@ Created on Thu Jun 26 17:31:16 2025
 @author: mm4114
 """
 from dataclasses import dataclass
-from typing import ClassVar
 from lampyr.segments.abstract import Segment
 from abc import abstractmethod
 

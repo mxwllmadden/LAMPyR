@@ -117,8 +117,9 @@ def mouse_create(lampyr : Lampyr, mouseid, force, **kwargs):
     lampyr.mousemanager.create(mouseid, **kwargs)
 
 @mouse.command(name = 'list')
+@click.option('-recent', 'recent_only', is_flag=True, default=False, help='Only show recently run mice')
 @click.pass_obj
-def mouse_list(lampyr):
+def mouse_list(lampyr, recent_only):
     def _time_ago(ts):
         delta = int(time.time() - ts)
         if delta < 60:
@@ -144,13 +145,17 @@ def mouse_list(lampyr):
             stage = paradigm_data.get('stage', 'pending...')
         else:
             stage = '-'
+        time_since_last = 9999999999999
         if mouse.history:
             last_entry = mouse.history[-1]
             last = _time_ago(float(last_entry['starttime']))
+            time_since_last = int(time.time() - float(last_entry['starttime']))
             merit = str(last_entry.get('merit', ''))
             rewards = str(last_entry.get('rewards', ''))
         else:
             last, merit, rewards = 'never', '', ''
+        if recent_only and time_since_last > 86400:
+            continue
         rows.append((mid, paradigm, stage, last, merit, rewards))
     rows = sorted(rows, key = lambda x : x[0])
     headers = ('NAME', 'PARADIGM', 'STAGE', 'LAST SESSION', 'MERIT', 'REWARDS')
