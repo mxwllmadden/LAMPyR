@@ -154,7 +154,7 @@ def mouse_list(lampyr, recent_only):
             rewards = str(last_entry.get('rewards', ''))
         else:
             last, merit, rewards = 'never', '', ''
-        if recent_only and time_since_last > 86400:
+        if recent_only and time_since_last > 43200:
             continue
         rows.append((mid, paradigm, stage, last, merit, rewards))
     rows = sorted(rows, key = lambda x : x[0])
