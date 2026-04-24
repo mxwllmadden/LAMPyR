@@ -8,6 +8,7 @@ Created on Mon Aug 25 18:40:05 2025
 from lampyr.managers.abstract import AbstractManager
 from lampyr.files import savemousefile, loadmousefile, loadsessionfile, savesessionfile
 import os
+from pathlib import Path
 import json
 import glob
 from lampyr.primatives import Session, Mouse
@@ -440,9 +441,39 @@ class DataHandler(AbstractManager):
         sessionentry['month'] = dt.month
         sessionentry['day'] = dt.day
         for entry in ["merit", "demerit", "duration", "trial", "rewards",
-                      "abstention", "participation", "serial_abstention"]:
+                      "abstention", "participation"]:
             sessionentry[entry] = getattr(session, entry)
         mouse.history.append(sessionentry)
+    
+    def _mouse_session_list_from_files(self, mouseid):
+        data_dir = self.config.get('lampyr.mice_directory')
+        dir_fp = os.path.join(data_dir,
+                              mouseid,
+                              'lampyr_sessionhistory',
+                              '*.lampyr.json')
+        all_sessions = glob.glob(dir_fp)
+        all_sessions = [Path(p).name.removesuffix('.lampyr.json')
+                        for p in all_sessions]
+        return all_sessions
+    
+    def reconstruct_all_mouse_history_from_files(self):
+        mouselist, _ = self.mouselist()
+        for mouse in mouselist:
+            print(f'Reconstructing {mouse} history')
+            mouse_obj = self.loadmouse(mouse)
+            mouse_obj.history = []
+            if mouse == 'UNKNOWN_MOUSE':
+                continue
+            sessionlist = self._mouse_session_list_from_files(mouse)
+            print(f'Processing {len(sessionlist)} sessions')
+            for session in sessionlist:
+                try:
+                    s = self.loadsession(session, mouse)
+                    self.register_session_to_mouse(mouse_obj, s)
+                except:
+                    print(f'Failed to parse {mouse} - {session}')
+            print('Successfully registered '+
+                  f'{len(mouse_obj.history)}/{len(sessionlist)} sessions')
 
 
 class MouseManager(AbstractManager):
