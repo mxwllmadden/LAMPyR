@@ -115,11 +115,23 @@ def mouse_create(lampyr : Lampyr, mouseid, force, **kwargs):
             click.echo(f'\nFailed to create mouse: {kwargs["paradigm"]} Paradigm does not exist.')
             return
     lampyr.mousemanager.create(mouseid, **kwargs)
+    
+@mouse.command(name = 'retire')
+@click.argument('mouseid')
+@click.pass_obj
+def mouse_retire(lampyr : Lampyr, mouseid):
+    if lampyr.mousemanager.exists(mouseid):
+        lampyr.mousemanager.load(mouseid)
+        lampyr.mousemanager.retire()
+    else:
+        click.echo('Mouse does not exist')
+        
 
 @mouse.command(name = 'list')
 @click.option('-recent', 'recent_only', is_flag=True, default=False, help='Only show recently run mice')
+@click.option('-all', 'all', is_flag=True, default=False, help='Show all mice, including retired mice')
 @click.pass_obj
-def mouse_list(lampyr, recent_only):
+def mouse_list(lampyr, recent_only, all):
     def _time_ago(ts):
         delta = int(time.time() - ts)
         if delta < 60:
@@ -139,9 +151,12 @@ def mouse_list(lampyr, recent_only):
     rows = []
     for mid in mids:
         mouse = lampyr.datamanager.loadmouse(mid)
+        if mouse.retired and not all:
+            continue
         paradigm = mouse.paradigm or 'none'
         if mouse.paradigm is not None:
-            paradigm_data = mouse.properties.get(mouse.paradigm, {})
+            paradigmslug = lampyr.behaviors.get(paradigm).slug
+            paradigm_data = mouse.properties.get(paradigmslug, {})
             stage = paradigm_data.get('stage', 'pending...')
         else:
             stage = '-'
@@ -167,6 +182,7 @@ def mouse_list(lampyr, recent_only):
     click.echo('  '.join('-' * w for w in widths))
     for row in rows:
         click.echo('  '.join(row[i].ljust(widths[i]) for i in range(len(headers))))
+    click.echo('\n*Note: Paradigm and stage may not correspond to last session')
 
 @mouse.command(name = 'info')
 @click.argument('mouseid')

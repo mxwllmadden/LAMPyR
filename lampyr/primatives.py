@@ -61,6 +61,7 @@ class Mouse:
         completed session.
     """
     mouseid: str = '014-000'
+    retired : bool = False
     mouse_behav_param_overrides: dict = field(default_factory=dict)
     paradigm: str = None
     properties: dict = field(default_factory=dict)

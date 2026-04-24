@@ -434,6 +434,7 @@ class DataHandler(AbstractManager):
         """
         sessionentry = {}
         dt = datetime.fromtimestamp(session.starttime).astimezone()
+        sessionentry['sessionid'] = session.uniquesessionid
         sessionentry['starttime'] = session.starttime
         sessionentry['year'] = dt.year
         sessionentry['month'] = dt.month
@@ -489,6 +490,27 @@ class MouseManager(AbstractManager):
         """
         mouse = Mouse(mouseid=mouseid, **kwargs)
         self.mouse = mouse
+        self.save()
+    
+    def retire(self):
+        """
+        Marks mouse as retired
+
+        Parameters
+        ----------
+        mouseid : str
+            DESCRIPTION.
+
+        Returns
+        -------
+        None.
+
+        """
+        self.mouse.retired = True
+        self.save()
+        
+    def deretire(self):
+        self.mouse.retired = False
         self.save()
 
     def list(self):

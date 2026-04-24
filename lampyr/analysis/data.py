@@ -16,6 +16,7 @@ import numpy as np
 import os
 import shutil
 
+
 SegmentReference = namedtuple('SegmentReference', ['animal',
                                                    'session',
                                                    'segment'])
@@ -28,7 +29,6 @@ TraceExtractionProfile = namedtuple('ExtractionProfile', ['profile_name',
                                                           'samplerate',
                                                           'time_type',
                                                           'fill'])
-
 
 def trace_extractor_factory(session, profile: TraceExtractionProfile):
     """
@@ -122,8 +122,9 @@ class MultiSessionDataset:
         Maps mouse ID to a list of its sessions.
     """
 
-    def __init__(self, fp: str, sessions: List[Session] = None,
-                 destructive_overwrite=False):
+    def __init__(self, fp: str = None, sessions: List[Session] = None,
+                 destructive_overwrite=False,
+                 persistent = True):
         """
         Initialise the dataset, loading existing sessions from disk.
 
@@ -138,6 +139,9 @@ class MultiSessionDataset:
             If ``True``, delete all existing files in ``fp`` before adding
             new sessions.  Default is ``False``.
         """
+        self._persistent = persistent
+        if fp is None and persistent:
+            raise KeyError('Filepath required if operating in persistent mode')
         if sessions is None:
             sessions = []
         # Basic attributes
@@ -309,6 +313,9 @@ class MultiSessionDataset:
         """
         Save all sessions to disk and update the index file.
         """
+        if not self._persistent:
+            print('Warning: you may not save while in nonpersistent mode')
+            return
         session_names = [session.uniquesessionid for session in self.sessions]
         for session in self.sessions:
             files.savesessionfile(session, self.fp)
@@ -323,6 +330,9 @@ class MultiSessionDataset:
         Silently returns if the index file does not exist.
         """
         print('Loading dataset...')
+        if not self._persistent:
+            print('Warning: you may not load while in nonpersistent mode')
+            return
         try:
             session_names = files.loadjson(os.path.join(self.fp,
                                                         'msd_INDEX.lampyr.json'))
