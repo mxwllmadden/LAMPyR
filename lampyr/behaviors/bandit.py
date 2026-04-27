@@ -29,6 +29,11 @@ def event_trialstart(self: BehaviorSegment):
     self.log_debug('Sending play trial tone command to rig')
     self.rig.play.begintrialtone()
 
+def event_response(self : BehaviorSegment):
+    """Play the response registration tone and log the event"""
+    self.log_debug('Sending play response tone command to rig')
+    self.rig.play.responsetone()
+
 # -------------- Define Habituation Trial/Task --------------
 
 
@@ -145,6 +150,7 @@ class BanditTrial(Trial):
         self.register_event('pretrialstart',
                             description='beginning of pretrial period')
         self.register_event('response',
+                            callback=event_response,
                             description='Wheel response registered')
         self.log_debug(self.rewardprobs_perc)
 

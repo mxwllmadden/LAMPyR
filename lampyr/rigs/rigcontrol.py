@@ -170,8 +170,8 @@ class ArduinoBanditRig_0:
             """Play the trial-start tone (serial command ``'b'``)."""
             self.serial._writeserial('b')
 
-        def rewardtone(self):
-            """Play the reward tone (serial command ``'r'``)."""
+        def responsetone(self):
+            """Play the response tone (serial command ``'r'``)."""
             self.serial._writeserial('r')
 
         def punishtone(self):
