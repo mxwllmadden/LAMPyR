@@ -14,6 +14,23 @@ from lampyr.analysis.traces import dynamic_trace_extraction
 
 from typing import Iterable, List, Callable, Dict
 
+def _baseline_extraction_kwargs(baseline_range, n_events):
+    """
+    Auto-derive padding and pseudotime kwargs to extract a baseline window.
+
+    Given a window like ``[-2, 0]`` and one or more anchor events, return the
+    minimal padding and pseudotime arguments needed to extract that window
+    around the first anchor (which is placed at pseudotime ``0``).
+    """
+    pad_start = max(0.0, -baseline_range[0])
+    pad_end = max(0.0, baseline_range[1])
+    event_pt = [-pad_start, 0] + [None] * (n_events - 1) + [pad_end]
+    return {'padding': True,
+            'pad_start': pad_start,
+            'pad_end': pad_end,
+            'event_pseudotimes': event_pt}
+
+
 def longtidy_multidynamictraceextraction(
         data,
         segments: Iterable[SegmentReference],
@@ -56,7 +73,21 @@ def longtidy_multidynamictraceextraction(
     perprofilekwargs : dict, optional
         ``{profile_name: {kwarg: value}}`` to pass additional keyword arguments
         to :func:`~lampyr.analysis.traces.dynamic_trace_extraction` for
-        specific profiles only.
+        specific profiles only.  ``baseline_range: None`` here disables
+        baselining for that profile only.
+    baseline_range : tuple of (float, float), optional
+        Time window over which to compute the baseline mean to subtract from
+        each trace.  Interpretation depends on ``baseline_events``: if it is
+        ``None``, the window is in the same alignment as ``events``; otherwise
+        it is in the alignment defined by ``baseline_events`` (with the first
+        baseline event at pseudotime ``0``).
+    baseline_events : iterable of str, optional
+        If given, perform a separate extraction aligned to these events for
+        baseline computation.  Padding and pseudotimes are auto-derived from
+        ``baseline_range`` so the window fits exactly.
+    baseline_kwargs : dict, optional
+        Override or extend the auto-derived baseline-extraction kwargs (e.g.
+        force a specific ``samples`` count).  Rarely needed.
     **kwargs
         Additional keyword arguments forwarded to
         :func:`~lampyr.analysis.traces.dynamic_trace_extraction` for all
@@ -111,30 +142,31 @@ def longtidy_multidynamictraceextraction(
         else:
             profilekwargs = kwargs.copy()
 
+        # Per-profile baseline_range overrides the function-level value
+        profile_baseline_range = profilekwargs.pop('baseline_range',
+                                                   baseline_range)
+
         if baseline_events is None:
-            profilekwargs.setdefault('baseline_range', baseline_range)
-            t, sig, _ = dynamic_trace_extraction(data,
-                                                 segments=segments,
-                                                 events=events,
-                                                 extraction_profile=profile,
-                                                 **profilekwargs)
+            t, sig, _ = dynamic_trace_extraction(
+                data, segments=segments, events=events,
+                extraction_profile=profile,
+                baseline_range=profile_baseline_range,
+                **profilekwargs)
         else:
-            t, sig, _ = dynamic_trace_extraction(data,
-                                                 segments=segments,
-                                                 events=events,
-                                                 extraction_profile=profile,
-                                                 **profilekwargs)
-            bl_kw = (baseline_kwargs or {}).copy()
-            bl_kw.pop('baseline_range', None)
-            t_bl, sig_bl, _ = dynamic_trace_extraction(data,
-                                                       segments=segments,
-                                                       events=baseline_events,
-                                                       extraction_profile=profile,
-                                                       baseline_range=None,
-                                                       **bl_kw)
-            if baseline_range is not None:
-                bl_mask = ((t_bl >= baseline_range[0]) &
-                           (t_bl <= baseline_range[1]))
+            t, sig, _ = dynamic_trace_extraction(
+                data, segments=segments, events=events,
+                extraction_profile=profile,
+                **profilekwargs)
+            if profile_baseline_range is not None:
+                bl_kw = _baseline_extraction_kwargs(profile_baseline_range,
+                                                    len(baseline_events))
+                bl_kw.update(baseline_kwargs or {})
+                bl_kw.pop('baseline_range', None)
+                t_bl, sig_bl, _ = dynamic_trace_extraction(
+                    data, segments=segments, events=baseline_events,
+                    extraction_profile=profile, **bl_kw)
+                bl_mask = ((t_bl >= profile_baseline_range[0]) &
+                           (t_bl <= profile_baseline_range[1]))
                 baseline_means = np.nanmean(sig_bl[:, bl_mask], axis=1)
                 sig = sig - baseline_means[:, np.newaxis]
         n_segs, len_t = sig.shape
