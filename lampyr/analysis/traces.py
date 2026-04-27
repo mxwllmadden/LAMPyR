@@ -9,7 +9,7 @@ import numpy as np
 from scipy.interpolate import interp1d
 
 from lampyr.primatives import Session
-from lampyr.analysis.data import SegmentReference, TraceReference, MultiSessionDataset, TraceExtractionProfile
+from lampyr.analysis.dataset import SegmentReference, TraceReference, MultiSessionDataset, TraceExtractionProfile
 from lampyr.analysis.time import TimeTranslator, create_dynamictimearray, create_dynamictimearray_2d
 from lampyr.analysis.segments import extract_event_times_multiple
 

@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-from lampyr.analysis.data import SegmentReference, TraceExtractionProfile
+from lampyr.analysis.dataset import SegmentReference, TraceExtractionProfile
 from lampyr.analysis.traces import dynamic_trace_extraction
 
 from typing import Iterable, List, Callable, Dict

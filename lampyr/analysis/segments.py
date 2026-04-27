@@ -6,7 +6,7 @@ Created on Fri Jan 23 14:26:35 2026
 """
 import numpy as np
 
-from lampyr.analysis.data import MultiSessionDataset, SegmentReference
+from lampyr.analysis.dataset import MultiSessionDataset, SegmentReference
 
 from typing import Iterable, List
 

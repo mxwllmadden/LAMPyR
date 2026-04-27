@@ -123,8 +123,7 @@ class MultiSessionDataset:
     """
 
     def __init__(self, fp: str = None, sessions: List[Session] = None,
-                 destructive_overwrite=False,
-                 persistent = True):
+                 destructive_overwrite=False):
         """
         Initialise the dataset, loading existing sessions from disk.
 
@@ -139,9 +138,6 @@ class MultiSessionDataset:
             If ``True``, delete all existing files in ``fp`` before adding
             new sessions.  Default is ``False``.
         """
-        self._persistent = persistent
-        if fp is None and persistent:
-            raise KeyError('Filepath required if operating in persistent mode')
         if sessions is None:
             sessions = []
         # Basic attributes
@@ -150,13 +146,15 @@ class MultiSessionDataset:
 
         # File attributes
         self.fp = fp
-        os.makedirs(fp, exist_ok=True)
+        if fp is not None:
+            os.makedirs(fp, exist_ok=True)
         self.update()
 
-        if destructive_overwrite:
-            self.clear_files()
-        else:
-            self._load()
+        if fp is not None:
+            if destructive_overwrite:
+                self.clear_files()
+            else:
+                self._load()
         self.addsession(sessions)
 
         # Secondary attributes
@@ -171,9 +169,12 @@ class MultiSessionDataset:
         """
         Remove all in-memory sessions and delete all files in the dataset directory.
 
-        Also saves an empty index file after clearing.
+        Also saves an empty index file after clearing. No-op on disk operations
+        if the dataset is memory-only.
         """
         self.clear()
+        if not self.persistent:
+            return
         for item in os.listdir(self.fp):
             path = os.path.join(self.fp, item)
             if os.path.isfile(path) or os.path.islink(path):
@@ -309,12 +310,18 @@ class MultiSessionDataset:
 
     # File management
 
+    @property
+    def persistent(self) -> bool:
+        """True if the dataset has a backing directory on disk."""
+        return self.fp is not None
+
     def save(self):
         """
         Save all sessions to disk and update the index file.
+
+        No-op if the dataset is memory-only (no fp was given).
         """
-        if not self._persistent:
-            print('Warning: you may not save while in nonpersistent mode')
+        if not self.persistent:
             return
         session_names = [session.uniquesessionid for session in self.sessions]
         for session in self.sessions:
@@ -327,12 +334,12 @@ class MultiSessionDataset:
         """
         Load all sessions listed in the index file into memory.
 
-        Silently returns if the index file does not exist.
+        Silently returns if the index file does not exist or the dataset is
+        memory-only.
         """
-        print('Loading dataset...')
-        if not self._persistent:
-            print('Warning: you may not load while in nonpersistent mode')
+        if not self.persistent:
             return
+        print('Loading dataset...')
         try:
             session_names = files.loadjson(os.path.join(self.fp,
                                                         'msd_INDEX.lampyr.json'))

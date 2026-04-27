@@ -474,6 +474,7 @@ class DataHandler(AbstractManager):
                     print(f'Failed to parse {mouse} - {session}')
             print('Successfully registered '+
                   f'{len(mouse_obj.history)}/{len(sessionlist)} sessions')
+            self.savemouse(mouse_obj)
 
 
 class MouseManager(AbstractManager):
