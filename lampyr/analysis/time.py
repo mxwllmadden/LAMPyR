@@ -100,6 +100,35 @@ def create_dynamictimearray_2d(points_2d: np.ndarray,
         newarray[r,:] = create_dynamictimearray(row, samples)
     return newarray
 
+def create_syncstream(session: Session, components: list,
+                      roottime: str, contribution_cutoff: int = 200):
+    """
+    Build a SyncStream in session.rigdata from the given rig data components.
+
+    Samples up to ``contribution_cutoff`` points from each component channel,
+    concatenates them, and sorts by ``roottime`` so the resulting arrays are
+    monotonically increasing in the root time base.
+    """
+    timeentries = set().union(*[session.rigdata[c] for c in components])
+    timeentries = [t for t in timeentries if t != 'report_value']
+    session.rigdata['SyncStream'] = {k: np.empty(0, dtype=float)
+                                     for k in timeentries}
+    for c in components:
+        arrlen = len(list(session.rigdata[c].values())[0])
+        newentries = {
+            k: (np.full(arrlen, np.nan) if k not in session.rigdata[c]
+                else session.rigdata[c][k])
+            for k in timeentries
+        }
+        for t, v in newentries.items():
+            v_pared = v[::len(v) // contribution_cutoff] if len(v) > contribution_cutoff else v
+            session.rigdata['SyncStream'][t] = np.concatenate(
+                (session.rigdata['SyncStream'][t], v_pared))
+    idx = np.argsort(session.rigdata['SyncStream'][roottime])
+    for t in timeentries:
+        session.rigdata['SyncStream'][t] = session.rigdata['SyncStream'][t][idx]
+
+
 class TimeTranslator:
     """
     Interpolation-based converter between different time bases in a session.

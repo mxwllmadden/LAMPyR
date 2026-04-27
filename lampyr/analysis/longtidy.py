@@ -4,7 +4,7 @@ Created on Tue Jan  6 17:18:16 2026
 
 @author: mm4114
 """
-import inspect, hashlib, json
+import inspect, hashlib, json, pickle
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -175,32 +175,11 @@ def save_parquet(path: str | Path, df: pd.DataFrame, overwrite: bool = False):
 
 
 def ltdataset(cachefile):
-    """
-    Decorator that caches a long-tidy dataset function's output to Parquet.
-
-    Wraps a function that returns ``(df_main, df_meta)`` and transparently
-    caches the result based on a hash of the function's source code.  If the
-    function body has not changed since the last run, the cached Parquet files
-    are returned instead of re-running.  If the function body changes, old
-    cache files are deleted and the function is re-run.
-
-    Parameters
-    ----------
-    cachefile : str or Path
-        Path to a JSON metadata file that tracks cache state.  Parquet files
-        are stored in the same directory.
-
-    Returns
-    -------
-    callable
-        The wrapped function.  The wrapper accepts an additional
-        ``force_reload=False`` keyword argument to bypass the cache.
-    """
     cachefile = Path(cachefile)
     cachefile.parent.mkdir(parents=True, exist_ok=True)
 
     def decorator(func):
-        def wrapper(*args, force_reload = False, **kwargs):
+        def wrapper(*args, force_reload=False, **kwargs):
             # Load metadata
             if cachefile.exists():
                 with open(cachefile, "r") as f:
@@ -209,37 +188,65 @@ def ltdataset(cachefile):
                 meta = {}
 
             fid = func.__name__
-            uid = hashlib.sha256(inspect.getsource(func).encode()).hexdigest()
-            uid_main = f"{fid}_{uid}_main.parquet"
-            uid_meta = f"{fid}_{uid}_meta.parquet"
-            main_path = cachefile.parent / uid_main
-            meta_path = cachefile.parent / uid_meta
+            src_uid = hashlib.sha256(inspect.getsource(func).encode()).hexdigest()
 
-            if fid in meta:
-                old = meta[fid]
-                if (old.get("uid") == uid and main_path.exists()
-                    and meta_path.exists() and not force_reload):
+            # Hash of args + kwargs
+            try:
+                blob = pickle.dumps((args, sorted(kwargs.items())))
+            except Exception:
+                blob = repr((args, sorted(kwargs.items()))).encode()
+            args_uid = hashlib.sha256(blob).hexdigest()
+
+            entry = meta.get(fid, {"src_uid": src_uid, "entries": {}})
+
+            # Source changed → wipe ALL cached parquets for this function
+            if entry.get("src_uid") != src_uid:
+                for sub in entry.get("entries", {}).values():
+                    for fname in (sub.get("uid_main", ""), sub.get("uid_meta", "")):
+                        p = cachefile.parent / fname
+                        if p.exists():
+                            p.unlink()
+                entry = {"src_uid": src_uid, "entries": {}}
+
+            entries = entry["entries"]
+
+            # Cache hit for these specific args
+            if not force_reload and args_uid in entries:
+                sub = entries[args_uid]
+                main_path = cachefile.parent / sub["uid_main"]
+                meta_path = cachefile.parent / sub["uid_meta"]
+                if main_path.exists() and meta_path.exists():
                     df_main = load_parquet(main_path)
                     df_meta = load_parquet(meta_path)
                     if df_main is not None and df_meta is not None:
                         return df_main, df_meta
-                else:
-                    # Function changed → delete old parquets if exist
-                    for old_file in [old.get("uid_main", ""), old.get("uid_meta", "")]:
-                        old_path = cachefile.parent / old_file
-                        if old_path.exists():
-                            old_path.unlink()
 
-            # Run function and save
+            # force_reload → delete the existing parquet for this args entry first
+            if force_reload and args_uid in entries:
+                sub = entries[args_uid]
+                for fname in (sub.get("uid_main", ""), sub.get("uid_meta", "")):
+                    p = cachefile.parent / fname
+                    if p.exists():
+                        p.unlink()
+
+            # Run and save
+            uid_main = f"{fid}_{src_uid[:16]}_{args_uid[:16]}_main.parquet"
+            uid_meta = f"{fid}_{src_uid[:16]}_{args_uid[:16]}_meta.parquet"
+            main_path = cachefile.parent / uid_main
+            meta_path = cachefile.parent / uid_meta
+
             df_main, df_meta = func(*args, **kwargs)
             save_parquet(main_path, df_main, overwrite=True)
             save_parquet(meta_path, df_meta, overwrite=True)
 
-            meta[fid] = {"uid": uid, "uid_main": uid_main, "uid_meta": uid_meta}
+            entries[args_uid] = {"uid_main": uid_main, "uid_meta": uid_meta}
+            entry["src_uid"] = src_uid
+            entry["entries"] = entries
+            meta[fid] = entry
+
             with open(cachefile, "w") as f:
                 json.dump(meta, f, indent=2)
 
             return df_main, df_meta
-
         return wrapper
     return decorator

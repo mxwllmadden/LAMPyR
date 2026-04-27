@@ -8,4 +8,4 @@ Created on Wed Dec  3 18:26:06 2025
 from .colony import Colony
 from .dataset import MultiSessionDataset, TraceExtractionProfile, SegmentReference, TraceReference
 from .traces import dynamic_trace_extraction
-from .time import TimeTranslator
+from .time import TimeTranslator, create_syncstream

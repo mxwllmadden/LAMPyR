@@ -199,6 +199,7 @@ class MultiSessionDataset:
         if isinstance(session, list):
             for s in session:
                 self.addsession(s, _suppressupdate=True)
+            self.update()
             return
         if session.uniquesessionid in self.sessionids:
             self.sessions = [s for s in self.sessions
