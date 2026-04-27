@@ -24,6 +24,9 @@ def longtidy_multidynamictraceextraction(
         expose_segmentattr: List[str] = None,
         custom_exposures: Dict[str, Callable] = None,
         perprofilekwargs: dict = None,
+        baseline_range=None,
+        baseline_events=None,
+        baseline_kwargs: dict = None,
         **kwargs):
     """
     Extract multiple signal traces across segments and return long-form DataFrames.
@@ -73,7 +76,7 @@ def longtidy_multidynamictraceextraction(
                  (expose_reports or []) +
                  (expose_properties or []) +
                  (expose_segmentattr or []) +
-                 (custom_exposures or []))
+                 list(custom_exposures or {}))
     # Construct segment info dataframe
     segment_dict = {e: [] for e in exposures}
     expose_reports = expose_reports or []
@@ -102,17 +105,38 @@ def longtidy_multidynamictraceextraction(
 
     profile_dfs = []
     for profile in extraction_profiles:
-        if (perprofilekwargs is not None and 
-            profile.profile_name in perprofilekwargs):
-            profilekwargs = {**kwargs,
-                             **perprofilekwargs[profile.profile_name]}
+        if (perprofilekwargs is not None and
+                profile.profile_name in perprofilekwargs):
+            profilekwargs = {**kwargs, **perprofilekwargs[profile.profile_name]}
         else:
             profilekwargs = kwargs.copy()
-        t, sig, _ = dynamic_trace_extraction(data,
-                                             segments=segments,
-                                             events=events,
-                                             extraction_profile=profile,
-                                             **profilekwargs)
+
+        if baseline_events is None:
+            profilekwargs.setdefault('baseline_range', baseline_range)
+            t, sig, _ = dynamic_trace_extraction(data,
+                                                 segments=segments,
+                                                 events=events,
+                                                 extraction_profile=profile,
+                                                 **profilekwargs)
+        else:
+            t, sig, _ = dynamic_trace_extraction(data,
+                                                 segments=segments,
+                                                 events=events,
+                                                 extraction_profile=profile,
+                                                 **profilekwargs)
+            bl_kw = (baseline_kwargs or {}).copy()
+            bl_kw.pop('baseline_range', None)
+            t_bl, sig_bl, _ = dynamic_trace_extraction(data,
+                                                       segments=segments,
+                                                       events=baseline_events,
+                                                       extraction_profile=profile,
+                                                       baseline_range=None,
+                                                       **bl_kw)
+            if baseline_range is not None:
+                bl_mask = ((t_bl >= baseline_range[0]) &
+                           (t_bl <= baseline_range[1]))
+                baseline_means = np.nanmean(sig_bl[:, bl_mask], axis=1)
+                sig = sig - baseline_means[:, np.newaxis]
         n_segs, len_t = sig.shape
         t_long = np.tile(t, n_segs)
         sig_long = sig.flatten()
