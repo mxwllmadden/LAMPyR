@@ -177,7 +177,7 @@ class BanditTrial(Trial):
             poll_interval=0.005
         )
         if response != 'None':
-            resp_time = self.trigger_event('response', direction=response)
+            resp_time = self.trigger_event('response')
             self.create_report('response_delay', resp_time-tstart_time)
         self.create_report('response', response)
         highestrewardprob = max(self.rewardprobs_perc.values())
