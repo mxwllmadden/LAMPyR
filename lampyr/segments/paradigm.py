@@ -218,17 +218,17 @@ class Paradigm(ParadigmSegment):
         try:
             stage.run()
         except KeyboardInterrupt:
-            self.log_notice('CHECKING FOR PROGRESSION CRITERIA ({stageid}):')
+            self.log_notice(f'CHECKING FOR PROGRESSION CRITERIA ({stageid}):')
             self.define_progression(StageClass, self.paradigmdata[stageid])
             newstage = self.paradigmdata.get('stage', self._defaultstage)
             if newstage != stageid:
                 self.log_notice('Next session will be {newstage}')
             raise
-        self.log_notice('CHECKING FOR PROGRESSION CRITERIA ({stageid}):')
+        self.log_notice(f'CHECKING FOR PROGRESSION CRITERIA ({stageid}):')
         self.define_progression(StageClass,  self.paradigmdata[stageid])
         newstage = self.paradigmdata.get('stage', self._defaultstage)
         if newstage != stageid:
-            self.log_notice('Next session will be {newstage}')
+            self.log_notice(f'Next session will be {newstage}')
     
     def _createstagemap(self):
         self._stagemap = {}
@@ -249,7 +249,7 @@ class Paradigm(ParadigmSegment):
                 break
         newstage = self.stagelist[ind+1].slug
         self.paradigmdata['stage'] = newstage
-        self.log_debug('Progressed Paradigm Stage from {stageid} to {newstage}')
+        self.log_debug(f'Progressed Paradigm Stage from {stageid} to {newstage}')
     
     def setstagebyclass(self, stageclass):
         self.setstagebyslug(stageclass.slug)
