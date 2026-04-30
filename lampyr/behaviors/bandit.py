@@ -176,6 +176,7 @@ class BanditTrial(Trial):
             timeout=self.responsewindow_s,
             poll_interval=0.005
         )
+        response_time = time.time()
         if response != 'None':
             resp_time = self.trigger_event('response')
             self.create_report('response_delay', resp_time-tstart_time)
@@ -198,9 +199,14 @@ class BanditTrial(Trial):
         probability = self.rewardprobs_perc.get(response, 0) / 100
         rand = random.random()
         self.log_debug(f'RAND:{rand},THRESH:{probability}')
+        self.log_debug(f'Reward delay: {self.reward_delay_s}')
+        self.wait(self.reward_delay_s)
+        anticipatory_licks = self.rig.licks.since(response_time)
+        self.create_report('anticipatory_licks', anticipatory_licks)
+        self.log_info(f'{anticipatory_licks} anticipatory licks logged')
+        reward_time = time.time()        
         if rand < probability:
             self.log_info(f'Reward given ({round(probability*100)})% chance.')
-            self.wait(self.reward_delay_s)
             self.trigger_event('reward')
             self.create_report('rewarded', True)
         else:
@@ -208,6 +214,9 @@ class BanditTrial(Trial):
                 f'No reward given ({round(probability*100)})% chance.')
             self.create_report('rewarded', False)
         self.wait(self.iti2_s)
+        reward_licks = self.rig.licks.since(reward_time)
+        self.create_report('reward_licks', reward_licks)
+        self.log_info(f'{reward_licks} reward licks logged')
 
     def response_loop(self):
         wheel_pos = self.rig.wheel.angle()
