@@ -13,33 +13,18 @@ class NotificationManager(AbstractManager):
     """
     Manages push notifications via the Pushover API.
 
-    Notifications are sent to the active user and any supervisors registered
-    in the shared ``users.json`` config file.
+    Notifications are sent to every active user (supervisors are always active)
+    registered in the shared ``users.json`` config file.
 
     Attributes
     ----------
-    user : str
-        Currently active user name (or ``'all'`` to target every user).
     userdata : ConfigFile
         Shared user database containing Pushover credentials.
     """
 
     def start(self):
-        """Load the last-used user name and shared user database."""
-        self.user = self.config.get('notifications.last_user')
+        """Load the shared user database."""
         self.userdata = self.config.load_shared_extended_config('users')
-
-    def set_user(self, name):
-        """
-        Set the active user and persist the choice to config.
-
-        Parameters
-        ----------
-        name : str
-            User name to make active.
-        """
-        self.user = name
-        self.config.set('notifications.last_user', name)
 
     def add_user(self, name, pushover_user_key, supervisor=False, active=True):
         """
@@ -116,8 +101,7 @@ class NotificationManager(AbstractManager):
         """
         Build the list of user names that should receive the next notification.
 
-        Returns the active user plus any supervisors, or all users if
-        ``self.user == 'all'``.
+        Returns every active user (supervisors are always active).
 
         Returns
         -------
@@ -125,12 +109,7 @@ class NotificationManager(AbstractManager):
             Names to notify.
         """
         all_users = {n: d for n, d in self.userdata.to_dict().items() if isinstance(d, dict)}
-        active_users = [n for n, d in all_users.items() if d.get('active', True) or d.get('supervisor')]
-        if self.user == 'all':
-            return active_users
-        targets = [self.user] if self.user in active_users else []
-        supervisors = [n for n, d in all_users.items() if d.get('supervisor') and n != self.user]
-        return targets + supervisors
+        return [n for n, d in all_users.items() if d.get('active', True) or d.get('supervisor')]
 
     def _send_to_user(self, name, message, title, urgent=False):
         """

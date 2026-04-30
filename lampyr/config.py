@@ -165,9 +165,7 @@ class Config(ConfigFile):
             'configured': False,
             'sipper_calib': 10000
         },
-        'notifications': {
-            'last_user' : 'mixwell'
-        }
+        'notifications': {}
     }
 
     def __init__(self):
