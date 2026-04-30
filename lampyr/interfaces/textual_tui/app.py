@@ -413,6 +413,7 @@ class RunScreen(Screen):
         self._behavior = behavior
         self._session_params = session_params or {}
         self._thread: threading.Thread | None = None
+        self._animal_timer: threading.Timer | None = None
 
     def compose(self) -> ComposeResult:
         yield RichLog(id="run-output", markup=True, highlight=True, wrap=True)
@@ -491,7 +492,20 @@ class RunScreen(Screen):
             btn.label = "◀  RETURN TO MAIN"
             btn.variant = "success"
             self.add_class("run-done-success")
+            self._animal_timer = threading.Timer(600, self._animal_left_alert)
+            self._animal_timer.daemon = True
+            self._animal_timer.start()
         btn.disabled = False
+
+    def _animal_left_alert(self) -> None:
+        rig_name = self.app.lampyr.config.get("rig.name") or "UNKNOWN"
+        msg = f"ANIMAL LEFT IN RIG {rig_name} REMOVE ANIMAL IMMEDIATELY"
+        nm = self.app.lampyr.notificationmanager
+        for name, data in nm.userdata.to_dict().items():
+            if not isinstance(data, dict):
+                continue
+            if data.get('active', True) or data.get('supervisor'):
+                nm._send_to_user(name, msg, "EXPERIMENTER NEGLIGENCE", urgent=True)
 
     @on(Button.Pressed, "#action-btn")
     def on_action_btn(self, event: Button.Pressed) -> None:
@@ -509,6 +523,9 @@ class RunScreen(Screen):
                 pass
         else:
             # Session finished → return to main
+            if self._animal_timer is not None:
+                self._animal_timer.cancel()
+                self._animal_timer = None
             self.app.pop_screen()
 
 

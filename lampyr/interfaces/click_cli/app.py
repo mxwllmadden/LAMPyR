@@ -295,35 +295,39 @@ def user():
 
 @user.command(name='create')
 @click.argument('name')
-@click.option('-super', 'is_super', is_flag=True, default=False, help='Make user a supervisor')
+@click.option('-super', 'is_super', is_flag=True, default=False, help='Make user a supervisor (always active)')
 @click.option('--pushover_user_key', type=str, default=None, help='Pushover user key')
-@click.option('--pushover_app_token', type=str, default=None, help='Pushover app token')
 @click.pass_obj
-def user_create(lampyr, name, is_super, pushover_user_key, pushover_app_token):
+def user_create(lampyr, name, is_super, pushover_user_key):
     nm = lampyr.notificationmanager
     if name in nm.userdata._config:
         click.echo(f"User '{name}' already exists. Use 'user edit' to modify.")
         return
-    nm.add_user(name, pushover_user_key or '', pushover_app_token or '', supervisor=is_super)
+    nm.add_user(name, pushover_user_key or '', supervisor=is_super)
     click.echo(f"User '{name}' created.")
 
 @user.command(name='edit')
 @click.argument('name')
 @click.option('--pushover_user_key', type=str, default=None, help='Pushover user key')
-@click.option('--pushover_app_token', type=str, default=None, help='Pushover app token')
 @click.option('--supervisor', type=click.BOOL, default=None, help='Set supervisor status (true/false)')
 @click.pass_obj
-def user_edit(lampyr, name, pushover_user_key, pushover_app_token, supervisor):
+def user_edit(lampyr, name, pushover_user_key, supervisor):
     nm = lampyr.notificationmanager
     if name not in nm.userdata._config:
         click.echo(f"User '{name}' not found.")
         return
     existing = nm.userdata._config[name]
     puk = pushover_user_key if pushover_user_key is not None else existing.get('pushover_user_key', '')
-    pat = pushover_app_token if pushover_app_token is not None else existing.get('pushover_app_token', '')
     sup = supervisor if supervisor is not None else existing.get('supervisor', False)
-    nm.add_user(name, puk, pat, supervisor=sup)
+    nm.add_user(name, puk, supervisor=sup, active=existing.get('active', True))
     click.echo(f"User '{name}' updated.")
+
+@user.command(name='set-token')
+@click.argument('token')
+@click.pass_obj
+def user_set_token(lampyr, token):
+    lampyr.notificationmanager.set_app_token(token)
+    click.echo("Pushover app token updated.")
 
 @user.command(name='inspect')
 @click.argument('name')
@@ -339,14 +343,63 @@ def user_inspect(lampyr, name):
 @user.command(name='list')
 @click.pass_obj
 def user_list(lampyr):
-    users = lampyr.notificationmanager.userdata._config
+    users = {n: d for n, d in lampyr.notificationmanager.userdata._config.items() if isinstance(d, dict)}
     if not users:
         click.echo('No users configured.')
         return
     actions.printheader('USERS')
     for name, data in users.items():
-        supervisor = ' [supervisor]' if data.get('supervisor') else ''
-        click.echo(f'{name}{supervisor}')
+        if data.get('supervisor'):
+            tag = ' [supervisor]'
+        elif data.get('active', True):
+            tag = ' [active]'
+        else:
+            tag = ' [inactive]'
+        click.echo(f'{name}{tag}')
+
+@user.command(name='activate')
+@click.argument('name')
+@click.pass_obj
+def user_activate(lampyr, name):
+    nm = lampyr.notificationmanager
+    try:
+        nm.set_user_active(name, True)
+        click.echo(f"User '{name}' activated.")
+    except KeyError as e:
+        click.echo(f"Error: {e}")
+
+@user.command(name='deactivate')
+@click.argument('name')
+@click.pass_obj
+def user_deactivate(lampyr, name):
+    nm = lampyr.notificationmanager
+    try:
+        nm.set_user_active(name, False)
+        click.echo(f"User '{name}' deactivated.")
+    except (KeyError, ValueError) as e:
+        click.echo(f"Error: {e}")
+
+@user.command(name='ping')
+@click.option('--user', '-u', 'target', type=str, default=None, help='User to ping (defaults to all active users)')
+@click.option('--message', '-m', type=str, default='This is a test notification from Lampyr.', help='Message to send')
+@click.option('--urgent', is_flag=True, default=False, help='Send as emergency priority (bypasses Do Not Disturb)')
+@click.pass_obj
+def user_ping(lampyr, target, message, urgent):
+    nm = lampyr.notificationmanager
+    users = {n: d for n, d in nm.userdata._config.items() if isinstance(d, dict)}
+    if not users:
+        click.echo('No users configured.')
+        return
+    title = 'Lampyr Emergency' if urgent else 'Lampyr Ping'
+    if target is not None:
+        if target not in users:
+            click.echo(f"User '{target}' not found.")
+            return
+        nm._send_to_user(target, message, title, urgent=urgent)
+    else:
+        for name, data in users.items():
+            if data.get('active', True):
+                nm._send_to_user(name, message, title, urgent=urgent)
 
 @user.command(name='remove')
 @click.argument('name')

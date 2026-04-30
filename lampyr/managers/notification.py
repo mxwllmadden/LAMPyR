@@ -41,7 +41,7 @@ class NotificationManager(AbstractManager):
         self.user = name
         self.config.set('notifications.last_user', name)
 
-    def add_user(self, name, pushover_user_key, pushover_app_token, supervisor=False):
+    def add_user(self, name, pushover_user_key, supervisor=False, active=True):
         """
         Register a new user in the shared user database.
 
@@ -51,17 +51,46 @@ class NotificationManager(AbstractManager):
             Unique user name.
         pushover_user_key : str
             Pushover user key for the account.
-        pushover_app_token : str
-            Pushover application token.
         supervisor : bool, optional
-            If ``True``, this user receives notifications for all other users'
-            sessions.  Default is ``False``.
+            If ``True``, this user always receives notifications and cannot be
+            deactivated.  Default is ``False``.
+        active : bool, optional
+            If ``False``, the user is excluded from notifications.  Ignored for
+            supervisors, who are always active.  Default is ``True``.
         """
         self.userdata._config[name] = {
             'pushover_user_key': pushover_user_key,
-            'pushover_app_token': pushover_app_token,
-            'supervisor': supervisor
+            'supervisor': supervisor,
+            'active': True if supervisor else active,
         }
+        self.userdata.save()
+
+    def set_app_token(self, token):
+        """Store the shared Pushover application token in the users config."""
+        self.userdata._config['_app_token'] = token
+        self.userdata.save()
+
+    def set_user_active(self, name, active):
+        """
+        Set the active/inactive state of a user.
+
+        Parameters
+        ----------
+        name : str
+            User name to update.
+        active : bool
+            ``True`` to enable notifications for this user, ``False`` to disable.
+
+        Raises
+        ------
+        KeyError
+            If ``name`` is not in the user database.
+        """
+        if name not in self.userdata._config:
+            raise KeyError(f"User {name!r} not found.")
+        if self.userdata._config[name].get('supervisor'):
+            raise ValueError(f"User {name!r} is a supervisor and cannot be deactivated.")
+        self.userdata._config[name]['active'] = active
         self.userdata.save()
 
     def delete_user(self, name):
@@ -95,15 +124,15 @@ class NotificationManager(AbstractManager):
         list of str
             Names to notify.
         """
-        all_users = self.userdata.to_dict()
+        all_users = {n: d for n, d in self.userdata.to_dict().items() if isinstance(d, dict)}
+        active_users = [n for n, d in all_users.items() if d.get('active', True) or d.get('supervisor')]
         if self.user == 'all':
-            return list(all_users.keys())
-        targets = [self.user] if self.user in all_users else []
-        supervisors = [name for name, data in all_users.items()
-                       if data.get('supervisor') and name != self.user]
+            return active_users
+        targets = [self.user] if self.user in active_users else []
+        supervisors = [n for n, d in all_users.items() if d.get('supervisor') and n != self.user]
         return targets + supervisors
 
-    def _send_to_user(self, name, message, title):
+    def _send_to_user(self, name, message, title, urgent=False):
         """
         Send a Pushover notification to a single user.
 
@@ -117,6 +146,9 @@ class NotificationManager(AbstractManager):
             Notification body text.
         title : str
             Notification title.
+        urgent : bool, optional
+            If ``True``, sends at priority 2 (Emergency), which bypasses Do Not
+            Disturb and retries every 30 s for up to 1 hour until acknowledged.
 
         Raises
         ------
@@ -124,12 +156,18 @@ class NotificationManager(AbstractManager):
             If the Pushover API returns a non-200 status code.
         """
         try:
-            user_key = self.userdata.get(f'{name}.pushover_user_key')
-            app_token = self.userdata.get(f'{name}.pushover_app_token')
+            app_token = self.userdata.get('_app_token')
         except KeyError:
-            print(f'Notifications not configured for {name!r} — skipping.')
+            print('Pushover app token not set — run: lampyr user set-token <token>')
+            return
+        try:
+            user_key = self.userdata.get(f'{name}.pushover_user_key')
+        except KeyError:
+            print(f'Pushover user key not configured for {name!r} — skipping.')
             return
         payload = {"token": app_token, "user": user_key, "title": title, "message": message}
+        if urgent:
+            payload.update({"priority": 2, "retry": 30, "expire": 10800})
         response = requests.post("https://api.pushover.net/1/messages.json", data=payload)
         if response.status_code != 200:
             raise RuntimeError(f"Pushover notification failed for {name!r}: {response.text}")
