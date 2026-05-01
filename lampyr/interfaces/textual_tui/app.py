@@ -454,7 +454,7 @@ class RunScreen(Screen):
                 out("\x1b[33mRun 'lampyr rig configure' or use developer mode.\x1b[0m")
                 error = True
                 return
-            if calibrated < time.time() - 129600:
+            if calibrated < time.time() - 216000:
                 out("\x1b[1;31mERROR: Rig calibration has expired.\x1b[0m")
                 out("\x1b[33mTap CALIBRATE on the main screen.\x1b[0m")
                 error = True
@@ -664,7 +664,7 @@ class LampyrApp(App):
         CalibrationScreen, or an already-open confirm screen, does not trigger
         a second push.
         """
-        expired = self.lampyr.config.get("rig.calibrated") < time.time() - 129600
+        expired = self.lampyr.config.get("rig.calibrated") < time.time() - 216000
         already_active = any(
             isinstance(s, (CalibrationScreen, CalibrationConfirmScreen))
             for s in self.screen_stack
