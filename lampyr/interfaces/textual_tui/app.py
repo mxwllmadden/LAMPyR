@@ -499,7 +499,7 @@ class RunScreen(Screen):
 
     def _animal_left_alert(self) -> None:
         rig_name = self.app.lampyr.config.get("rig.name") or "UNKNOWN"
-        msg = f"Rig {rig_name} may have a mouse in it that has been left for 30 minutes. Please check on this rig/mouse."
+        msg = f"Rig {rig_name} may have a mouse in it that has been left for 30 minutes after session end. Please check on this rig/mouse."
         nm = self.app.lampyr.notificationmanager
         for name, data in nm.userdata.to_dict().items():
             if not isinstance(data, dict):
