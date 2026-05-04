@@ -492,20 +492,20 @@ class RunScreen(Screen):
             btn.label = "◀  RETURN TO MAIN"
             btn.variant = "success"
             self.add_class("run-done-success")
-            self._animal_timer = threading.Timer(600, self._animal_left_alert)
-            self._animal_timer.daemon = True
-            self._animal_timer.start()
+        self._animal_timer = threading.Timer(1800, self._animal_left_alert)
+        self._animal_timer.daemon = True
+        self._animal_timer.start()
         btn.disabled = False
 
     def _animal_left_alert(self) -> None:
         rig_name = self.app.lampyr.config.get("rig.name") or "UNKNOWN"
-        msg = f"ANIMAL LEFT IN RIG {rig_name} REMOVE ANIMAL IMMEDIATELY"
+        msg = f"Rig {rig_name} may have a mouse in it that has been left for 30 minutes. Please check on this rig/mouse."
         nm = self.app.lampyr.notificationmanager
         for name, data in nm.userdata.to_dict().items():
             if not isinstance(data, dict):
                 continue
             if data.get('active', True) or data.get('supervisor'):
-                nm._send_to_user(name, msg, "EXPERIMENTER NEGLIGENCE", urgent=True)
+                nm._send_to_user(name, msg, "URGENT NOTICE", urgent=True)
 
     @on(Button.Pressed, "#action-btn")
     def on_action_btn(self, event: Button.Pressed) -> None:
