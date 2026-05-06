@@ -30,16 +30,23 @@ class ConfigFile:
             Path to the JSON file to load from and save to.  Created on the
             first :meth:`save` call if it does not yet exist.
         """
+        self._default = deepcopy(default_config)
+        self._syncfp = fp
+        self._load()
+
+    def _load(self):
         loaded_config = {}
-        if os.path.exists(fp):
+        if os.path.exists(self._syncfp):
             try:
-                with open(fp, 'r') as f:
+                with open(self._syncfp, 'r') as f:
                     loaded_config = json.load(f)
             except Exception:
                 pass
-        self._config = self._merge_configs(deepcopy(default_config), loaded_config)
-        self._default = deepcopy(default_config)
-        self._syncfp = fp
+        self._config = self._merge_configs(deepcopy(self._default), loaded_config)
+
+    def reload(self):
+        """Re-read config from disk, picking up out-of-process changes."""
+        self._load()
 
     def _merge_configs(self, default, loaded):
         """

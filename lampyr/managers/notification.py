@@ -108,6 +108,7 @@ class NotificationManager(AbstractManager):
         list of str
             Names to notify.
         """
+        self.userdata.reload()
         all_users = {n: d for n, d in self.userdata.to_dict().items() if isinstance(d, dict)}
         return [n for n, d in all_users.items() if d.get('active', True) or d.get('supervisor')]
 
@@ -134,6 +135,7 @@ class NotificationManager(AbstractManager):
         RuntimeError
             If the Pushover API returns a non-200 status code.
         """
+        self.userdata.reload()
         try:
             app_token = self.userdata.get('_app_token')
         except KeyError:

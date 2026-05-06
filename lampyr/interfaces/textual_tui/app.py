@@ -501,6 +501,7 @@ class RunScreen(Screen):
         rig_name = self.app.lampyr.config.get("rig.name") or "UNKNOWN"
         msg = f"Rig {rig_name} may have a mouse in it that has been left for 30 minutes after session end. Please check on this rig/mouse."
         nm = self.app.lampyr.notificationmanager
+        nm.userdata.reload()
         for name, data in nm.userdata.to_dict().items():
             if not isinstance(data, dict):
                 continue

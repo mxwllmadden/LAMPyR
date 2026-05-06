@@ -179,20 +179,15 @@ class RetreiveMice(AbstractManager):
     def start(self):
         self.data = self._injected_data or DataHandler(config=self.config)
 
-    def _current_stage(self, mouse) -> str:
-        """Return the mouse's current stage string, or None if unset."""
-        if mouse.paradigm is None:
-            return None
-        return mouse.properties.get(mouse.paradigm, {}).get('stage')
-
     def _mouse_passes_filter(self, mouse,
                              paradigm: str,
+                             slug: str,
                              stage: str,
                              retired: bool,
                              properties: dict) -> bool:
         if paradigm is not None and mouse.paradigm != paradigm:
             return False
-        if stage is not None and self._current_stage(mouse) != stage:
+        if stage is not None and mouse.properties.get(slug, {}).get('stage') != stage:
             return False
         if retired is not None and mouse.retired != retired:
             return False
@@ -204,6 +199,7 @@ class RetreiveMice(AbstractManager):
 
     def get_mice(self,
                  paradigm: str = None,
+                 slug: str = None,
                  stage: str = None,
                  retired: bool = None,
                  properties: dict = None) -> List[str]:
@@ -213,10 +209,15 @@ class RetreiveMice(AbstractManager):
         Parameters
         ----------
         paradigm : str, optional
-            Keep only mice whose ``mouse.paradigm`` matches this value.
+            Keep only mice whose ``mouse.paradigm`` matches this value
+            (the paradigm class name, e.g. ``'BanditParadigm'``).
+        slug : str, optional
+            Paradigm slug used as the key into ``mouse.properties``
+            (e.g. ``'BanditParadigm2'``).  Required when filtering by
+            ``stage``.
         stage : str, optional
-            Keep only mice whose current stage
-            (``mouse.properties[paradigm]['stage']``) matches this value.
+            Keep only mice whose current stage at ``mouse.properties[slug]['stage']``
+            matches this value.
         retired : bool, optional
             ``True`` — only retired mice.  ``False`` — only active mice.
             ``None`` (default) — all mice regardless of retirement status.
@@ -233,7 +234,7 @@ class RetreiveMice(AbstractManager):
         result = []
         for mid in mouseids:
             mouse = self.data.loadmouse(mid)
-            if self._mouse_passes_filter(mouse, paradigm, stage,
+            if self._mouse_passes_filter(mouse, paradigm, slug, stage,
                                          retired, properties):
                 result.append(mid)
         return result
