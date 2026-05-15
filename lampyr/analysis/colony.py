@@ -56,6 +56,9 @@ class RetreiveSessions(AbstractManager):
             'month': month,
             'day': day,
         }
+        
+    def load_session_from_id(self, sessionid: str, mouseid: str):
+        return self.data.loadsession(sessionid, mouseid)
 
     @staticmethod
     def _entry_sessionid(entry: dict):
