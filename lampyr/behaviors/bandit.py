@@ -23,7 +23,6 @@ def event_waterreward(self: BehaviorSegment):
     self.rig.reward.give()
     self.log_reward(0.005)
 
-
 def event_trialstart(self: BehaviorSegment):
     """Play the trial-start tone and log the event."""
     self.log_debug('Sending play trial tone command to rig')
@@ -314,7 +313,7 @@ class BanditTask(Task):
         if (self.rescue_trial_enabled
             and self.session.serial_abstention >= self.rescue_threshold
             and self._rescue_count < self.rescue_limit
-                and self._rescue_sincelast >= self.rescue_cooldown):
+            and self._rescue_sincelast >= self.rescue_cooldown):
             self.log_notice('Attempting to rescue performance...')
             rescue_trial = HabituationTrial(parent=self,
                                             slug='Rescue',
@@ -327,6 +326,10 @@ class BanditTask(Task):
             del rescue_trial
             self._rescue_count += 1
             self._rescue_sincelast = 0
+        
+        if (self.session.serial_abstention >= 20
+            and self.session.serial_abstention // 10 == 0):
+            self.notify(f'Animal has not responded in {self.session.serial_abstention} trials')
 
 # -------------- Define Training Stages and Training Paradigm --------------
 
@@ -345,9 +348,9 @@ class HabituationStage(Stage):
 
     def define_sessionparams(self):
         """Set duration (60 min), serial abstention (10), and reward (200) limits."""
-        self.set_sessionparam('duration_limit', 60)
+        self.set_sessionparam('duration_limit', 90)
         self.set_sessionparam('serial_abstention_limit', 10)
-        self.set_sessionparam('reward_limit', 200)
+        self.set_sessionparam('reward_amount_limit', 1.0)
 
     def define_task(self, stage_data):
         """Run the habituation task."""
@@ -383,10 +386,10 @@ class ResponseAbstractStage(Stage):
 
     def define_sessionparams(self):
         """Set shared defaults: 60 min max, 20 min min, serial abstention 30, reward 200."""
-        self.set_sessionparam('duration_limit', 60)
-        self.set_sessionparam('duration_min', 20)
+        self.set_sessionparam('duration_limit', 90)
+        self.set_sessionparam('duration_min', 60)
         self.set_sessionparam('serial_abstention_limit', 30)
-        self.set_sessionparam('reward_limit', 200)
+        self.set_sessionparam('reward_amount_limit', 1.0)
 
     def _compute_sb_metric(self):
         """Returns (Right - Left) / (Right + Left), or None if no directional responses."""
@@ -433,11 +436,6 @@ class AnyWheelStage(ResponseAbstractStage):
     sessions meeting the participation threshold.
     """
     slug: str = 'Stage1AnyWheel'
-
-    def define_sessionparams(self):
-        """Extend base params: raise minimum duration to 40 minutes."""
-        super().define_sessionparams()
-        self.set_sessionparam('duration_min', 40)
 
     def define_task(self, stage_data):
         """Run an any-direction BanditTask with 100% reward and rescue trials enabled."""
