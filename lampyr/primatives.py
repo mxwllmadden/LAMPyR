@@ -138,6 +138,9 @@ class Session:
     reward_limit: int = None
     reward_min: int = None
     rewards: int = 0
+    reward_amount_limit : float = None
+    reward_amount_min : float = None
+    reward_amount : float = 0.0
     abstention_limit: int = None
     abstention_min: int = None
     abstention: int = 0
@@ -214,6 +217,8 @@ class Session:
              0 if self.duration is None else round(self.duration, 2)),
             ("trial", self.trial_min, self.trial_limit, self.trial),
             ("reward", self.reward_min, self.reward_limit, self.rewards),
+            ("reward_amount", self.reward_amount_min,
+             self.reward_amount_limit, self.reward_amount),
             ("abstention", self.abstention_min,
              self.abstention_limit, self.abstention),
             ("participation", self.participation_min,
@@ -391,6 +396,9 @@ class Session:
         if self.reward_limit is not None:
             if self.rewards >= self.reward_limit:
                 stops.append('reward')
+        if self.reward_amount_limit is not None:
+            if self.reward_amount >= self.reward_amount_limit:
+                stops.append('reward')
 
         # All minimum requirements must be met before limits are tested
         if self.trial_min is not None:
@@ -413,6 +421,12 @@ class Session:
                 return stops
         if self.serial_abstention_min is not None:
             if self.serial_abstention < self.serial_abstention_min:
+                return stops
+        if self.reward_amount_min is not None:
+            if self.reward_amount < self.reward_amount_min:
+                return stops
+        if self.reward_min is not None:
+            if self.rewards < self.reward_min:
                 return stops
 
         # Test all limits and report reasons for stop

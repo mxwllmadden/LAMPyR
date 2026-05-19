@@ -161,7 +161,7 @@ class BehaviorSegment(Segment):
             self.log_debug(
                 f'Participation +{increment} → {self.session.participation}. SerialAbstention reset.')
 
-    def log_reward(self, increment=1):
+    def log_reward(self, amount):
         """
         Increment the session reward counter.
 
@@ -171,8 +171,10 @@ class BehaviorSegment(Segment):
             Amount to add to ``session.rewards``. Default is 1.
         """
         if self.session:
-            self.session.rewards += increment
-            self.log_debug(f'Reward +{increment} → {self.session.rewards}.')
+            self.session.rewards += 1
+            self.session.reward_amount += amount
+            self.log_debug(f'Reward +1 → {self.session.rewards}.')
+            self.log_debug(f'Reward +{amount} → {self.session.reward_amount}.')
 
     def log_trial(self, increment=1):
         """

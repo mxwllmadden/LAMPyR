@@ -21,7 +21,7 @@ def event_waterreward(self: BehaviorSegment):
     """Give a water reward via the rig and log the reward event."""
     self.log_debug('Sending give reward command to rig')
     self.rig.reward.give()
-    self.log_reward()
+    self.log_reward(0.005)
 
 
 def event_trialstart(self: BehaviorSegment):
