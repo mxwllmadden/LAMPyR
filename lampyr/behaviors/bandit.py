@@ -580,12 +580,12 @@ class AltWheelStage2(ResponseAbstractStage):
         else:
             bias = 'Neutral'
 
-        if (adj_val == 0 and (-0.1 < side_bias < 0.1)
+        if (adj_val == 0 and (-0.15 < side_bias < 0.15)
                 and self.session.merit >= 150):
-            self.log_info('No bias at adjustment score zero')
+            self.log_info('No/low bias and sufficient performance for good session')
             consecutive_good_sessions += 1
         else:
-            self.log_info(f'{bias} bias detected')
+            self.log_info('Bias or low performance detected')
             consecutive_good_sessions = 0
 
         if signdiff(side_bias, adj_val) or abs(side_bias) < 0.1:
