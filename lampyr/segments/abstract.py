@@ -203,7 +203,7 @@ class Segment(ABC):
         finally:
             self.endtime = time.time()
             self._frozen = True
-            self.dump()
+            self.dump()    
     
     @abstractmethod
     def execute(self):
@@ -332,6 +332,26 @@ class Segment(ABC):
             Unix timestamp of the log event.
         """
         return self._log('ERROR', message, output=True, style='\033[38;5;196m')
+    
+    def notify(self, message):
+        """
+        Notify relevant users via lampyr.notificationmanager
+
+        Parameters
+        ----------
+        message : str
+            Message to send to user.
+
+        Returns
+        -------
+        None.
+
+        """
+        self.log_notice(message)
+        if self.lampyr is None:
+            self.log_warning('User push notification is not possible without lampyr instance')
+            return
+        self.lampyr.notify(message)
 
     def dump(self):
         """

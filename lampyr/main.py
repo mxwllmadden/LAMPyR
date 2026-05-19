@@ -144,7 +144,12 @@ class Lampyr:
                 f'{mid} has ended behavior due to {" and ".join(stopcodes)}',
                 title=f'Lampyr - {rname}'
                 )
-            
+    
+    def notify(self, message):
+        rigname = self.config.get('rig.name')
+        self.notificationmanager.send_notification(
+            message,
+            title=f'Lampyr - {rigname}')
     
     def _createsession(self, **kwargs):
         """
