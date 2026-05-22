@@ -253,7 +253,7 @@ class BanditTrial(Trial):
 class BanditTask(Task):
     target_mode: Literal['Random', 'Any', 'Left', 'Right'] = 'Random'
     reward_prob_target: int = 80
-    reward_prob_offtarget: int = 20
+    reward_prob_offtarget: int = 0
     reward_delay_s: float = 1
 
     rescue_trial_enabled: bool = False
