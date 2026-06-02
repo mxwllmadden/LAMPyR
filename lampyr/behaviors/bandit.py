@@ -328,7 +328,7 @@ class BanditTask(Task):
             self._rescue_sincelast = 0
         
         if (self.session.serial_abstention >= 20
-            and self.session.serial_abstention // 10 == 0):
+            and self.session.serial_abstention % 10 == 0):
             self.notify(f'Animal has not responded in {self.session.serial_abstention} trials')
 
 # -------------- Define Training Stages and Training Paradigm --------------
