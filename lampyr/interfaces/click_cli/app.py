@@ -13,6 +13,7 @@ from lampyr import config, Lampyr
 from lampyr.version import __version__
 from lampyr.segments import Task, Trial, Stage, Paradigm
 from lampyr.behaviors import bandit
+from lampyr.behaviors import test
 from lampyr.rigs.rigcontrol import ArduinoBanditRig_0, SerialMonitor
 from lampyr import actions
 
