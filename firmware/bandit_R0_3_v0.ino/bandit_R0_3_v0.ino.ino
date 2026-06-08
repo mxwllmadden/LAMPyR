@@ -59,6 +59,9 @@ uint32_t rewardError = 0;
 bool manualRewardState = HIGH;
 bool manualRewardLastState = HIGH;
 
+// Lock
+int angle = 0;
+
 // Loop frequency measurement
 bool measureLoopRequested = false;
 
@@ -269,6 +272,14 @@ void executeCommand(char cmd)
         case 'u': // Unlock the wheel
         {
             wheelLock.write(90);
+            break;
+        }
+        case 'a': // Unlock the wheel
+        {
+            String str = Serial.readStringUntil('\n');
+
+            angle = str.toInt();
+            wheelLock.write(angle);
             break;
         }
     }
