@@ -180,6 +180,7 @@ class BanditTrial(Trial):
             resp_time = self.trigger_event('response')
             self.create_report('response_delay', resp_time-tstart_time)
             self.rig.wheellock.lock()
+            self.log_info('Wheel Locked')
         self.create_report('response', response)
         highestrewardprob = max(self.rewardprobs_perc.values())
         if self.rewardprobs_perc[response] == highestrewardprob:
@@ -215,6 +216,7 @@ class BanditTrial(Trial):
             self.create_report('rewarded', False)
         self.wait(1)
         self.rig.wheellock.unlock()
+        self.log_info('Wheel Unlocked')
         self.wait(self.iti2_s - 1)
         reward_licks = self.rig.licks.since(reward_time)
         self.create_report('reward_licks', reward_licks)
