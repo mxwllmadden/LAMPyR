@@ -214,13 +214,12 @@ class BanditTrial(Trial):
             self.log_info(
                 f'No reward given ({round(probability*100)})% chance.')
             self.create_report('rewarded', False)
-        self.wait(1)
-        self.rig.wheellock.unlock()
-        self.log_info('Wheel Unlocked')
-        self.wait(self.iti2_s - 1)
+        self.wait(self.iti2_s)
         reward_licks = self.rig.licks.since(reward_time)
         self.create_report('reward_licks', reward_licks)
         self.log_info(f'{reward_licks} reward licks logged')
+        self.rig.wheellock.unlock()
+        self.log_info('Wheel Unlocked')
 
     def response_loop(self):
         wheel_pos = self.rig.wheel.angle()
