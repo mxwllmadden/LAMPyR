@@ -162,6 +162,13 @@ class ArduinoBanditRig_0:
                 if l1 < 512 and l2 > 512:
                     lcount += 1
             return lcount
+    
+    class WheelLock(_Control):
+        def lock(self):
+            self.serial._writeserial('l')
+            
+        def unlock(self):
+            self.serial._writeserial('u')
 
     class Speaker(_Control):
         """Speaker interface for playing tones via the rig Arduino."""
@@ -217,6 +224,7 @@ class ArduinoBanditRig_0:
         self.licks = self.Lick(self)
         self.play = self.Speaker(self)
         self.reward = self.Sipper(self)
+        self.wheellock = self.WheelLock(self)
 
     def listen(self):
         """
