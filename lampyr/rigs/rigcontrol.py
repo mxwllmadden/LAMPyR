@@ -171,7 +171,7 @@ class ArduinoBanditRig_0:
             self.serial._writeserial('u')
         
         def to_angle(self, angle):
-            self.serial._writeserial(f'a{angle}')
+            self.serial._writeserial(f'a{angle}\n')
 
     class Speaker(_Control):
         """Speaker interface for playing tones via the rig Arduino."""
