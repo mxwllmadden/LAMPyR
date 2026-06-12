@@ -236,6 +236,8 @@ class RetreiveMice(AbstractManager):
         mouseids, _ = self.data.mouselist()
         result = []
         for mid in mouseids:
+            if mid == 'UNKNOWN_MOUSE':
+                continue
             mouse = self.data.loadmouse(mid)
             if self._mouse_passes_filter(mouse, paradigm, slug, stage,
                                          retired, properties):
