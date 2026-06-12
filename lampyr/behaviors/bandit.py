@@ -176,9 +176,11 @@ class BanditTrial(Trial):
             timeout=self.responsewindow_s,
             poll_interval=0.005
         )
+        self.log_notice('exit')
         if self.enable_wheel_lock:
             self.rig.wheellock.to_angle(65)
             self.log_info('Wheel Locked')
+            self.log_notice('wheel lock')
         response_time = time.time()
         if response != 'None':
             resp_time = self.trigger_event('response')
@@ -224,6 +226,7 @@ class BanditTrial(Trial):
         self.log_info('Wheel Unlocked')
 
     def response_loop(self):
+        self.log_notice('check')
         wheel_pos = self.rig.wheel.angle()
         if wheel_pos < -self.responsethresholds_deg['Left']:
             return 'Left'
