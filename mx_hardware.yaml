@@ -1,4 +1,4 @@
-name: mx_hardware #Environment for hardware control/behavior rigs/arduino
+name: lampyr #Environment for hardware control/behavior rigs/arduino
 channels:
   - conda-forge
   - defaults
@@ -8,7 +8,6 @@ dependencies:
   - pyserial
   - numpy>=1.21
   - pandas
-  - spyder-kernels=3.0
   - textual
   - textual-dev
   - click
