@@ -177,10 +177,10 @@ class BanditTrial(Trial):
             poll_interval=0.005
         )
         response_time = time.time()
-        if self.enable_wheel_lock:
-            self.rig.wheellock.to_angle(65)
-            self.log_info('Wheel Locked')
         if response != 'None':
+            if self.enable_wheel_lock:
+                self.rig.wheellock.to_angle(65)
+                self.log_info('Wheel Locked')
             resp_time = self.trigger_event('response')
             self.create_report('response_delay', resp_time-tstart_time)
         self.create_report('response', response)
