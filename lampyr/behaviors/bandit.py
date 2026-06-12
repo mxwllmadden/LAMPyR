@@ -137,6 +137,7 @@ class BanditTrial(Trial):
                                                             'None': 0})
     reward_delay_s: float = 1
     iti2_s: float = 2.5
+    enable_wheel_lock : bool = False
 
     def setup(self):
         """Register trial events"""
@@ -179,7 +180,8 @@ class BanditTrial(Trial):
         if response != 'None':
             resp_time = self.trigger_event('response')
             self.create_report('response_delay', resp_time-tstart_time)
-            self.rig.wheellock.toangle(65)
+            if self.enable_wheel_lock:
+                self.rig.wheellock.toangle(65)
             self.log_info('Wheel Locked')
         self.create_report('response', response)
         highestrewardprob = max(self.rewardprobs_perc.values())
@@ -269,6 +271,8 @@ class BanditTask(Task):
     taskblocks_sizerange: tuple = (6, 15)
     taskblocks_blockcounttype: Literal['Reward',
                                        'Merit', 'RewardedMerit'] = 'Reward'
+    
+    enable_wheel_lock : bool = False
 
     def setup(self):
         if self.target_mode == 'Random':
@@ -291,7 +295,8 @@ class BanditTask(Task):
     def loop(self):
         trial = BanditTrial(parent=self,
                             reward_delay_s=self.reward_delay_s,
-                            rewardprobs_perc=self._reward_probs[self._target])
+                            rewardprobs_perc=self._reward_probs[self._target],
+                            enable_wheel_lock = self.enable_wheel_lock)
         trial.run()
 
         if self.taskblocks_enabled:
@@ -739,3 +744,269 @@ class BanditParadigm(Paradigm):
                 self.progress()
         elif current_stage is BanditEndStage:
             pass
+        
+        
+# BANDIT PARADIGM 3 - Created 6.12.26 in response to issues with animal training
+# Animal response curves not sufficient
+@dataclass
+class AnyWheelStageB3(ResponseAbstractStage):
+    """
+    Stage 1: any-direction wheel training with 100% reward probability.
+
+    Advances to ``'AltWheel'`` after the required number of consecutive
+    sessions meeting the participation threshold.
+    """
+    slug: str = 'Stage1AnyWheel'
+
+    def define_task(self, stage_data):
+        """Run an any-direction BanditTask with 100% reward and rescue trials enabled."""
+        task = BanditTask(parent=self,
+                          target_mode='Any',
+                          reward_prob_target=100,
+                          reward_prob_offtarget=0,
+                          reward_delay_s=1,
+                          rescue_trial_enabled=True,
+                          taskblocks_enabled=False,
+                          enable_wheel_lock=True)
+        task.run()
+        del task
+
+    def define_shaping(self, stage_data):
+        """
+        Advance to AltWheel after the required consecutive sessions above participation threshold.
+        """
+        consecutive_good_sessions = stage_data.get(
+            'consecutive_good', 0)
+        if self.session.duration < 30:
+            return
+        if self.session.participation >= 100:
+            consecutive_good_sessions += 1
+            self.log_info('This session was a good session (>=150 responses)')
+        else:
+            consecutive_good_sessions = 0
+
+        self.log_info(
+            f'Number of consecutive good sessions is {consecutive_good_sessions}')
+        stage_data['consecutive_good'] = consecutive_good_sessions
+
+
+@dataclass
+class AltWheelStage1B3(ResponseAbstractStage):
+    """
+    Stage 2: alternating-target bandit with adaptive threshold correction.
+
+    Runs a standard bandit task and applies a three-phase threshold adjustment
+    algorithm (correction → return → complete) to correct side bias while
+    keeping wheel thresholds within bounds.
+    """
+    slug: str = 'Stage2Correction'
+
+    def define_task(self, stage_data):
+        """Run the alternating bandit task with 100/0 reward probabilities."""
+        task = BanditTask(parent=self,
+                          reward_prob_target=100,
+                          reward_prob_offtarget=0,
+                          rescue_trial_enabled=True,
+                          taskblocks_enabled=True,
+                          reward_delay_s=1,
+                          enable_wheel_lock=True
+                          )
+        task.run()
+        del task
+
+    def define_shaping(self, stage_data):
+        consecutive_good_sessions = stage_data.get(
+            'consecutive_good', 0)
+        global_paradigm_data = self.get_globalparadigmdata()
+        adj_val = global_paradigm_data.get('adjustmentvalue', 0)
+        side_bias = self._compute_sb_metric()
+
+        if side_bias is None or self.session.duration < 30:
+            return
+
+        def sign(x): return 1 if x > 0 else -1 if x < 0 else 0
+        def signdiff(x, y): return (sign(x) * sign(y)) == -1
+
+        if side_bias < 0:
+            bias = 'Leftward'
+        elif side_bias > 0:
+            bias = 'Rightward'
+        else:
+            bias = 'Neutral'
+
+        if adj_val == 0:  # No adjustment value set
+            self.log_info('Assigning adjustment value for first time')
+            if side_bias == 0:
+                consecutive_good_sessions += 1
+            else:
+                adj_val += 5*sign(side_bias)
+                consecutive_good_sessions = 0
+        elif abs(side_bias) > 0.2:
+            if signdiff(adj_val, side_bias):
+                self.log_info('Adjustment value has overshot bias')
+                self.log_info('This was a good session (contrary side bias)')
+                consecutive_good_sessions += 1
+            else:
+                self.log_info(
+                    f'{bias} bias detected. Adjustment value updated.')
+                adj_val += 5*sign(side_bias)
+                consecutive_good_sessions = 0
+        else:
+            self.log_info('This was a good session (no side bias detected)')
+            consecutive_good_sessions += 1
+
+        self.log_info('Adjustment Value is ' + str(adj_val))
+        self.log_info('Consecutive good sessions is ' +
+                      str(consecutive_good_sessions))
+        adj_val = max(-40, min(40, adj_val))
+        global_paradigm_data['adjustmentvalue'] = adj_val
+        stage_data['consecutive_good'] = consecutive_good_sessions
+
+
+@dataclass
+class AltWheelStage2B3(ResponseAbstractStage):
+    """
+    Stage 2: alternating-target bandit with adaptive threshold correction.
+
+    Runs a standard bandit task and applies a three-phase threshold adjustment
+    algorithm (correction → return → complete) to correct side bias while
+    keeping wheel thresholds within bounds.
+    """
+    slug: str = 'Stage3Return'
+
+    def define_task(self, stage_data):
+        """Run the alternating bandit task with 100/0 reward probabilities."""
+        task = BanditTask(parent=self,
+                          reward_prob_target=100,
+                          reward_prob_offtarget=0,
+                          rescue_trial_enabled=True,
+                          taskblocks_enabled=True,
+                          reward_delay_s=1,
+                          enable_wheel_lock=True
+                          )
+        task.run()
+        del task
+
+    def define_shaping(self, stage_data):
+        consecutive_good_sessions = stage_data.get(
+            'consecutive_good', 0)
+        global_paradigm_data = self.get_globalparadigmdata()
+        adj_val = global_paradigm_data.get('adjustmentvalue', 0)
+        side_bias = self._compute_sb_metric()
+
+        if side_bias is None or self.session.duration < 30:
+            return
+
+        # If side bias is against adjustment value, return by 2
+        def sign(x): return 1 if x > 0 else -1 if x < 0 else 0
+        def signdiff(x, y): return (sign(x) * sign(y)) == -1
+
+        if side_bias < 0:
+            bias = 'Leftward'
+        elif side_bias > 0:
+            bias = 'Rightward'
+        else:
+            bias = 'Neutral'
+
+        if (adj_val == 0 and (-0.15 < side_bias < 0.15)
+                and self.session.merit >= 150):
+            self.log_info('No/low bias and sufficient performance for good session')
+            consecutive_good_sessions += 1
+        else:
+            self.log_info('Bias or low performance detected')
+            consecutive_good_sessions = 0
+
+        if signdiff(side_bias, adj_val) or abs(side_bias) < 0.1:
+            self.log_info(f'No/opposite bias at adjustment score {adj_val}')
+            adj_val = adj_val - (sign(adj_val) * min(abs(adj_val), 2))
+
+        self.log_info('Adjustment Value is ' + str(adj_val))
+        self.log_info('Consecutive good sessions is ' +
+                      str(consecutive_good_sessions))
+        adj_val = max(-40, min(40, adj_val))
+        global_paradigm_data['adjustmentvalue'] = adj_val
+        stage_data['consecutive_good'] = consecutive_good_sessions
+
+@dataclass
+class BanditTrainingStageB3(ResponseAbstractStage):
+    """
+    Full bandit training stage with the default reward probability schedule.
+    """
+    slug: str = 'Stage5BanditTraining'
+    _task: object = None
+
+    def define_task(self, stage_data):
+        """Run the bandit task with rescue trials and retain a reference for analysis."""
+        task = BanditTask(parent=self,
+                          rescue_trial_enabled=True,
+                          reward_delay_s=1,
+                          enable_wheel_lock=True)
+        task.run()
+        del task
+
+    def define_shaping(self, stage_data):
+        consecutive_good_sessions = stage_data.get(
+            'consecutive_good', 0)
+
+        if self.session.duration < 30:
+            return
+
+        if self.session.merit >= 150:
+            self.log_info('This was a good session (merit >= 150)')
+            consecutive_good_sessions += 1
+        else:
+            consecutive_good_sessions = 0
+
+        self.log_notice('Consecutive good sessions is ' +
+                        str(consecutive_good_sessions))
+        stage_data['consecutive_good'] = consecutive_good_sessions
+
+
+@dataclass
+class BanditEndStageB3(ResponseAbstractStage):
+    """
+    Final bandit stage run without rescue trials.
+    """
+    slug: str = 'Stage6Bandit'
+
+    def define_task(self, stage_data):
+        """Run the bandit task without rescue trials."""
+        task = BanditTask(parent=self,
+                          rescue_trial_enabled=False,
+                          enable_wheel_lock=True)
+        task.run()
+        del task
+
+    def define_shaping(self, stage_data):
+        pass
+
+
+@dataclass
+class BanditParadigm3(Paradigm):
+    slug: str = 'BanditParadigm3'
+    stagelist: tuple = (HabituationStage,
+                        AnyWheelStageB3,
+                        AltWheelStage1B3,
+                        AltWheelStage2B3,
+                        BanditTrainingStageB3,
+                        BanditEndStageB3)
+    
+    def define_progression(self, current_stage, stage_data):
+        if current_stage is HabituationStage:
+            if stage_data.get('consecutive_good', 0) >= 1:
+                self.progress()
+        elif current_stage is AnyWheelStage:
+            if stage_data.get('consecutive_good', 0) >= 1:
+                self.progress()
+        elif current_stage is AltWheelStage1:
+            if stage_data.get('consecutive_good', 0) >= 2:
+                self.progress()
+        elif current_stage is AltWheelStage2:
+            if stage_data.get('consecutive_good', 0) >= 1:
+                self.progress()
+        elif current_stage is BanditTrainingStage:
+            if stage_data.get('consecutive_good', 0) >= 2:
+                self.progress()
+        elif current_stage is BanditEndStage:
+            pass
+    
