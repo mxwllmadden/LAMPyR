@@ -176,13 +176,13 @@ class BanditTrial(Trial):
             timeout=self.responsewindow_s,
             poll_interval=0.005
         )
+        if self.enable_wheel_lock:
+            self.rig.wheellock.to_angle(65)
+            self.log_info('Wheel Locked')
         response_time = time.time()
         if response != 'None':
             resp_time = self.trigger_event('response')
             self.create_report('response_delay', resp_time-tstart_time)
-            if self.enable_wheel_lock:
-                self.rig.wheellock.to_angle(65)
-            self.log_info('Wheel Locked')
         self.create_report('response', response)
         highestrewardprob = max(self.rewardprobs_perc.values())
         if self.rewardprobs_perc[response] == highestrewardprob:
