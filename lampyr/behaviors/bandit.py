@@ -11,6 +11,7 @@ from typing import ClassVar, Literal, List, Tuple
 
 from lampyr.segments import Trial, Task, BehaviorSegment
 from lampyr.segments.paradigm import Stage, Paradigm
+from lampyr.math import rand_int_uniform_hazard_auto
 from dataclasses import dataclass, field
 
 # -------------- Define Event Callbacks --------------
@@ -304,7 +305,7 @@ class BanditTask(Task):
                 self._trialinblockcount += 1
             if self._trialinblockcount >= self._thisblocksize:
                 self._trialinblockcount = 0
-                self._thisblocksize = random.randint(
+                self._thisblocksize = rand_int_uniform_hazard_auto(
                     *self.taskblocks_sizerange)
                 match self._target:
                     case 'Left':
