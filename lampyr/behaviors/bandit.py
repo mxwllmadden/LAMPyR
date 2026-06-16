@@ -396,7 +396,7 @@ class ResponseAbstractStage(Stage):
 
     def define_sessionparams(self):
         """Set shared defaults: 60 min max, 20 min min, serial abstention 30, reward 200."""
-        self.set_sessionparam('duration_limit', 90)
+        self.set_sessionparam('duration_limit', 60)
         self.set_sessionparam('duration_min', 60)
         self.set_sessionparam('serial_abstention_limit', 30)
         self.set_sessionparam('reward_amount_limit', 1.0)
