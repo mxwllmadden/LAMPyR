@@ -11,7 +11,7 @@ from typing import ClassVar, Literal, List, Tuple
 
 from lampyr.segments import Trial, Task, BehaviorSegment
 from lampyr.segments.paradigm import Stage, Paradigm
-from lampyr.math import rand_int_uniform_hazard_auto
+from lampyr.math import rand_int_uniform_hazard
 from dataclasses import dataclass, field
 
 # -------------- Define Event Callbacks --------------
