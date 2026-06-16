@@ -305,7 +305,7 @@ class BanditTask(Task):
                 self._trialinblockcount += 1
             if self._trialinblockcount >= self._thisblocksize:
                 self._trialinblockcount = 0
-                self._thisblocksize = rand_int_uniform_hazard_auto(
+                self._thisblocksize = rand_int_uniform_hazard(
                     *self.taskblocks_sizerange)
                 match self._target:
                     case 'Left':
