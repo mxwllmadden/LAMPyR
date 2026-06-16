@@ -4,6 +4,8 @@ Created on Mon Jun 15 16:42:30 2026
 
 @author: mm4114
 """
+from datetime import date, datetime, timedelta
+from time import time
 
 from typing import Callable, List, Tuple
 
@@ -78,6 +80,7 @@ class SessionQuery:
         "abstention",
         "participation",
         "starttime",
+        "age"
     }
 
     def __init__(self,
@@ -90,6 +93,18 @@ class SessionQuery:
 
     def _clone(self, predicate: Callable):
         return SessionQuery(self.colony, self.mouseids, self.predicates + (predicate,))
+
+    def session(self, sessionid):
+        for mouseid, entry in self._matched_entries():
+            if self.colony._sessionid(entry) == sessionid:
+                return self.colony.load_session(
+                    sessionid,
+                    mouseid,
+                )
+    
+        raise KeyError(
+            f"Session '{sessionid}' not found in query."
+        )
 
     def where(self, predicate: Callable):
         return self._clone(predicate)
@@ -142,6 +157,125 @@ class SessionQuery:
 
     def starttime(self, minimum=None, maximum=None):
         return self.range("starttime", minimum, maximum)
+
+    @staticmethod
+    def _timestamp_bound(value, *, is_end: bool):
+        if value is None:
+            return None
+
+        if isinstance(value, (int, float)):
+            return float(value)
+
+        if isinstance(value, datetime):
+            return value.timestamp()
+
+        if isinstance(value, date):
+            dt = datetime.combine(value, datetime.min.time())
+            if is_end:
+                dt += timedelta(days=1)
+            return dt.timestamp()
+
+        if isinstance(value, str):
+            value = value.strip()
+
+            if not value:
+                return None
+
+            for parser in (datetime.fromisoformat, date.fromisoformat):
+                try:
+                    parsed = parser(value)
+                except ValueError:
+                    continue
+
+                if isinstance(parsed, datetime):
+                    return parsed.timestamp()
+
+                dt = datetime.combine(parsed, datetime.min.time())
+                if is_end:
+                    dt += timedelta(days=1)
+                return dt.timestamp()
+
+        raise ValueError(
+            "Date bounds must be date, datetime, timestamp, or ISO-format string."
+        )
+
+    def date_range(self, start=None, end=None):
+        """
+        Filter sessions by calendar date or datetime range.
+
+        `start` is inclusive. `end` is inclusive for date-only values and
+        exclusive for datetime/timestamp values.
+        """
+        minimum = self._timestamp_bound(start, is_end=False)
+        maximum = self._timestamp_bound(end, is_end=True)
+
+        def predicate(entry):
+            starttime = self.colony._starttime(entry)
+
+            if starttime is None:
+                return False
+
+            if minimum is not None and starttime < minimum:
+                return False
+
+            if maximum is not None and starttime >= maximum:
+                return False
+
+            return True
+
+        return self._clone(predicate)
+    
+    def age(self, minimum=None, maximum=None):
+        """
+        Session age in days.
+        age(0, 30) => last 30 days
+        age(30, None) => older than 30 days
+        """
+        now = time()
+    
+        def predicate(entry):
+            starttime = self.colony._starttime(entry)
+    
+            if starttime is None:
+                return False
+    
+            age_days = (now - starttime) / 86400
+    
+            if minimum is not None and age_days < minimum:
+                return False
+    
+            if maximum is not None and age_days > maximum:
+                return False
+    
+            return True
+    
+        return self._clone(predicate)
+    
+    def younger_than(self, days: float):
+        """
+        Include only sessions that occurred within the last N days.
+        """
+        cutoff = time() - days * 24 * 60 * 60
+    
+        return self.where(
+            lambda entry: (
+                self.colony._starttime(entry) is not None
+                and self.colony._starttime(entry) >= cutoff
+            )
+        )
+    
+    def older_than(self, days: float):
+        """
+        Include only sessions older than N days.
+        """
+        cutoff = time() - days * 24 * 60 * 60
+    
+        return self.where(
+            lambda entry: (
+                self.colony._starttime(entry) is not None
+                and self.colony._starttime(entry) < cutoff
+            )
+        )
 
     def filters(self, **filters):
         query = self
@@ -225,9 +359,10 @@ class SessionQuery:
 
 
 class Colony:
-    def __init__(self, config=None, keep="sessions"):
+    def __init__(self, config=None, keep="sessions", verbose: bool = False):
         self.data = DataHandler(config=config)
         self.keep_mice, self.keep_sessions = self._resolve_keep(keep)
+        self.verbose = verbose
         self._mouse_cache = {}
         self._session_cache = {}
 
@@ -274,6 +409,7 @@ class Colony:
                  abstention=None,
                  participation=None,
                  starttime=None,
+                 date_range=None,
                  where=None) -> SessionQuery:
         if mouseid is not None and mouseids is not None:
             raise ValueError("Pass only one of mouseid or mouseids.")
@@ -308,23 +444,37 @@ class Colony:
         if where is not None:
             query = query.where(where)
 
+        if date_range is not None:
+            try:
+                start, end = date_range
+            except (TypeError, ValueError):
+                raise ValueError(
+                    "date_range must be a (start, end) tuple."
+                ) from None
+
+            query = query.date_range(start, end)
+
         return query
 
     def load_mouse(self, mouseid: str):
         if not self.keep_mice:
+            self._log(f"Loading mouse {mouseid}")
             return self.data.loadmouse(mouseid)
 
         if mouseid not in self._mouse_cache:
+            self._log(f"Loading mouse {mouseid}")
             self._mouse_cache[mouseid] = self.data.loadmouse(mouseid)
 
         return self._mouse_cache[mouseid]
 
     def load_session(self, sessionid: str, mouseid: str):
         if not self.keep_sessions:
+            self._log(f"Loading session {sessionid} for mouse {mouseid}")
             return self.data.loadsession(sessionid, mouseid)
 
         key = (mouseid, sessionid)
         if key not in self._session_cache:
+            self._log(f"Loading session {sessionid} for mouse {mouseid}")
             self._session_cache[key] = self.data.loadsession(sessionid, mouseid)
 
         return self._session_cache[key]
@@ -349,6 +499,10 @@ class Colony:
             raise ValueError("keep must be one of: None, 'none', 'mice', 'sessions', 'all'")
 
         return modes[keep]
+
+    def _log(self, message: str):
+        if self.verbose:
+            print(message)
 
     @staticmethod
     def _sessionid(entry: dict):

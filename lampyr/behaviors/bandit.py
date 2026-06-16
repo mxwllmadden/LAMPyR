@@ -416,9 +416,8 @@ class ResponseAbstractStage(Stage):
         def allowedrange(deg): return min(max(5, deg), 40)
         responsethresholds_deg = {'Left': allowedrange(15-adjustment),
                                   'Right': allowedrange(15+adjustment)}
-        self.mouse.mouse_behav_param_overrides['BanditTrial'] = {
-            'responsethresholds_deg': responsethresholds_deg
-        }
+        self.mouse.mouse_behav_param_overrides[
+            'BanditTrial']['responsethresholds_deg'] = responsethresholds_deg
 
     def session_summary(self):
         """Log response counts and side bias. Returns sb_metric (float) or None."""
