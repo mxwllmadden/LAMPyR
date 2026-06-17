@@ -136,7 +136,7 @@ class BanditTrial(Trial):
     rewardprobs_perc: dict = field(default_factory=lambda: {'Left': 100,
                                                             'Right': 100,
                                                             'None': 0})
-    reward_delay_s: float = 1
+    reward_delay_s: float = 0
     iti2_s: float = 2.5
     enable_wheel_lock : bool = False
 
@@ -261,7 +261,7 @@ class BanditTask(Task):
     target_mode: Literal['Random', 'Any', 'Left', 'Right'] = 'Random'
     reward_prob_target: int = 80
     reward_prob_offtarget: int = 0
-    reward_delay_s: float = 1
+    reward_delay_s: float = 0
 
     rescue_trial_enabled: bool = False
     rescue_limit: int = 3
@@ -672,7 +672,7 @@ class BanditTrainingStage(ResponseAbstractStage):
         """Run the bandit task with rescue trials and retain a reference for analysis."""
         task = BanditTask(parent=self,
                           rescue_trial_enabled=True,
-                          reward_delay_s=1)
+                          reward_delay_s=0)
         task.run()
         del task
 
@@ -764,7 +764,7 @@ class AnyWheelStageB3(ResponseAbstractStage):
                           target_mode='Any',
                           reward_prob_target=100,
                           reward_prob_offtarget=0,
-                          reward_delay_s=1,
+                          reward_delay_s=0,
                           rescue_trial_enabled=True,
                           taskblocks_enabled=False,
                           enable_wheel_lock=True)
@@ -808,7 +808,7 @@ class AltWheelStage1B3(ResponseAbstractStage):
                           reward_prob_offtarget=0,
                           rescue_trial_enabled=True,
                           taskblocks_enabled=True,
-                          reward_delay_s=1,
+                          reward_delay_s=0,
                           enable_wheel_lock=True
                           )
         task.run()
@@ -881,7 +881,7 @@ class AltWheelStage2B3(ResponseAbstractStage):
                           reward_prob_offtarget=0,
                           rescue_trial_enabled=True,
                           taskblocks_enabled=True,
-                          reward_delay_s=1,
+                          reward_delay_s=0,
                           enable_wheel_lock=True
                           )
         task.run()
@@ -939,7 +939,7 @@ class BanditTrainingStageB3(ResponseAbstractStage):
         """Run the bandit task with rescue trials and retain a reference for analysis."""
         task = BanditTask(parent=self,
                           rescue_trial_enabled=True,
-                          reward_delay_s=1,
+                          reward_delay_s=0,
                           enable_wheel_lock=True)
         task.run()
         del task
@@ -995,18 +995,18 @@ class BanditParadigm3(Paradigm):
         if current_stage is HabituationStage:
             if stage_data.get('consecutive_good', 0) >= 1:
                 self.progress()
-        elif current_stage is AnyWheelStage:
+        elif current_stage is AnyWheelStageB3:
             if stage_data.get('consecutive_good', 0) >= 1:
                 self.progress()
-        elif current_stage is AltWheelStage1:
+        elif current_stage is AltWheelStage1B3:
             if stage_data.get('consecutive_good', 0) >= 2:
                 self.progress()
-        elif current_stage is AltWheelStage2:
+        elif current_stage is AltWheelStage2B3:
             if stage_data.get('consecutive_good', 0) >= 1:
                 self.progress()
-        elif current_stage is BanditTrainingStage:
+        elif current_stage is BanditTrainingStageB3:
             if stage_data.get('consecutive_good', 0) >= 2:
                 self.progress()
-        elif current_stage is BanditEndStage:
+        elif current_stage is BanditEndStageB3:
             pass
     

@@ -480,7 +480,11 @@ def loadmousefile(mouseid: str,
     if not os.path.exists(mouse_json_fp):
         raise FileExistsError(f'{mouse_json_fp} does not exist')
     
-    mouse_data = loadjson(mouse_json_fp)
+    try:
+        mouse_data = loadjson(mouse_json_fp)
+    except json.JSONDecodeError as e:
+        e.add_note(f'Mouse {mouseid} has malformed json')
+        raise e
     
     if os.path.exists(mouse_csv_fp):
         mouse_data['history'] = loadcsv(mouse_csv_fp)

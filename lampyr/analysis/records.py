@@ -88,6 +88,7 @@ class RecordStore:
         self.conn.row_factory = sqlite3.Row
 
         self._init_metadata_table()
+        self._init_built_sessions_table()
 
     def register(self, extractor):
         if extractor.name is None:
@@ -152,10 +153,16 @@ class RecordStore:
             )
 
             if records is None:
-                self._build_session(
+                if self._session_built(
                     extractor_name,
-                    session,
-                )
+                    sessionid,
+                ):
+                    self.cache[key] = []
+                else:
+                    self._build_session(
+                        extractor_name,
+                        session,
+                    )
             else:
                 self.cache[key] = records
 
@@ -187,6 +194,13 @@ class RecordStore:
 
             if records is not None:
                 self.cache[key] = records
+                continue
+
+            if self._session_built(
+                extractor_name,
+                sessionid,
+            ):
+                self.cache[key] = []
                 continue
 
             session = query.colony.load_session(
@@ -243,6 +257,11 @@ class RecordStore:
             )
         ] = built
 
+        self._mark_session_built(
+            extractor_name,
+            sessionid,
+        )
+
         self._save_records(
             extractor_name,
             built,
@@ -255,6 +274,23 @@ class RecordStore:
             extractor_metadata (
                 extractor TEXT PRIMARY KEY,
                 version INTEGER NOT NULL
+            )
+            """
+        )
+
+        self.conn.commit()
+
+    def _init_built_sessions_table(self):
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS
+            extractor_sessions (
+                extractor TEXT NOT NULL,
+                sessionid TEXT NOT NULL,
+                PRIMARY KEY (
+                    extractor,
+                    sessionid
+                )
             )
             """
         )
@@ -292,6 +328,54 @@ class RecordStore:
     
         for key in keys:
             del self.cache[key]
+
+        self.conn.execute(
+            """
+            DELETE FROM extractor_sessions
+            WHERE extractor = ?
+            """,
+            (extractor_name,),
+        )
+        self.conn.commit()
+
+    def _session_built(
+        self,
+        extractor_name,
+        sessionid,
+    ):
+        row = self.conn.execute(
+            """
+            SELECT 1
+            FROM extractor_sessions
+            WHERE extractor = ?
+            AND sessionid = ?
+            """,
+            (
+                extractor_name,
+                str(sessionid),
+            ),
+        ).fetchone()
+
+        return row is not None
+
+    def _mark_session_built(
+        self,
+        extractor_name,
+        sessionid,
+    ):
+        self.conn.execute(
+            """
+            INSERT OR REPLACE INTO
+            extractor_sessions
+            (extractor, sessionid)
+            VALUES (?, ?)
+            """,
+            (
+                extractor_name,
+                str(sessionid),
+            ),
+        )
+        self.conn.commit()
 
     @staticmethod
     def _sql_type(value):

@@ -109,6 +109,20 @@ class SessionQuery:
     def where(self, predicate: Callable):
         return self._clone(predicate)
 
+    def sessionids(self, sessionids):
+        selected_ids = {
+            str(sessionid)
+            for sessionid in sessionids
+            if sessionid not in (None, "")
+        }
+
+        return self.where(
+            lambda entry: (
+                self.colony._sessionid(entry) is not None
+                and str(self.colony._sessionid(entry)) in selected_ids
+            )
+        )
+
     def range(self, key: str, minimum=None, maximum=None):
         if key not in self.RANGE_KEYS:
             raise ValueError(f"Unknown session filter: {key}")
@@ -351,6 +365,15 @@ class SessionQuery:
             for mouseid, entry in entries[:n]
         ]
 
+    def tail(self, n: int = 1):
+        """
+        Return a new SessionQuery restricted to the most recent N sessions.
+
+        Unlike `last()`, this remains a query object and can still be passed
+        to plots or further filtered.
+        """
+        return self.sessionids(self.last_ids(n))
+
     def bymouse(self) -> dict:
         return {
             mouseid: SessionQuery(self.colony, (mouseid,), self.predicates)
@@ -395,6 +418,7 @@ class Colony:
     def sessions(self,
                  mouseid=None,
                  mouseids=None,
+                 sessionids=None,
                  paradigm=None,
                  slug=None,
                  stage=None,
@@ -453,6 +477,9 @@ class Colony:
                 ) from None
 
             query = query.date_range(start, end)
+
+        if sessionids is not None:
+            query = query.sessionids(sessionids)
 
         return query
 
