@@ -340,39 +340,75 @@ class SessionQuery:
         ]
 
     def last_ids(self, n: int = 1) -> List[str]:
-        entries = [
-            (mouseid, entry)
-            for mouseid, entry in self._matched_entries()
-            if self.colony._starttime(entry) is not None
-        ]
-        entries.sort(key=lambda pair: self.colony._starttime(pair[1]), reverse=True)
+        sessionids = []
 
-        return [
-            self.colony._sessionid(entry)
-            for _, entry in entries[:n]
-        ]
+        for mouseid in self.mouseids:
+            entries = [
+                entry
+                for matched_mouseid, entry in self._matched_entries()
+                if (
+                    matched_mouseid == mouseid
+                    and self.colony._starttime(entry) is not None
+                )
+            ]
+            entries.sort(
+                key=self.colony._starttime,
+                reverse=True,
+            )
+            sessionids.extend(
+                self.colony._sessionid(entry)
+                for entry in entries[:n]
+            )
+
+        return sessionids
 
     def last(self, n: int = 1) -> list:
-        entries = [
-            (mouseid, entry)
-            for mouseid, entry in self._matched_entries()
-            if self.colony._starttime(entry) is not None
-        ]
-        entries.sort(key=lambda pair: self.colony._starttime(pair[1]), reverse=True)
+        sessions = []
 
-        return [
-            self.colony.load_session(self.colony._sessionid(entry), mouseid)
-            for mouseid, entry in entries[:n]
-        ]
+        for mouseid in self.mouseids:
+            entries = [
+                entry
+                for matched_mouseid, entry in self._matched_entries()
+                if (
+                    matched_mouseid == mouseid
+                    and self.colony._starttime(entry) is not None
+                )
+            ]
+            entries.sort(
+                key=self.colony._starttime,
+                reverse=True,
+            )
+            sessions.extend(
+                self.colony.load_session(
+                    self.colony._sessionid(entry),
+                    mouseid,
+                )
+                for entry in entries[:n]
+            )
+
+        return sessions
 
     def tail(self, n: int = 1):
         """
-        Return a new SessionQuery restricted to the most recent N sessions.
+        Return a new SessionQuery restricted to the most recent N sessions
+        for each mouse in the query.
 
         Unlike `last()`, this remains a query object and can still be passed
         to plots or further filtered.
         """
-        return self.sessionids(self.last_ids(n))
+        selected_sessionids = []
+
+        for mouseid in self.mouseids:
+            mouse_query = SessionQuery(
+                self.colony,
+                (mouseid,),
+                self.predicates,
+            )
+            selected_sessionids.extend(
+                mouse_query.last_ids(n)
+            )
+
+        return self.sessionids(selected_sessionids)
 
     def bymouse(self) -> dict:
         return {

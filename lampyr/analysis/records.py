@@ -27,24 +27,40 @@ class AbstractPlot(ABC):
 
     def records(self, extractor=None):
         self.preload()
-    
-        extractor = (
-            extractor
-            or self.extractors[0]
-        )
-    
-        records = []
-    
+
+        if extractor is not None:
+            extractors = (extractor,)
+        elif len(self.extractors) == 1:
+            extractors = (self.extractors[0],)
+        else:
+            extractors = tuple(self.extractors)
+
+        grouped_records = {
+            extractor_name: []
+            for extractor_name in extractors
+        }
+
         for sessionid in self.query.ids():
-            records.extend(
-                self.record_store.cache[
-                    (extractor, str(sessionid))
-                ]
-            )
-    
-        return records
+            sessionid = str(sessionid)
+            for extractor_name in extractors:
+                grouped_records[extractor_name].extend(
+                    self.record_store.cache[
+                        (extractor_name, sessionid)
+                    ]
+                )
+
+        if len(extractors) == 1:
+            return grouped_records[extractors[0]]
+
+        return grouped_records
     
     def groupby(self, key):
+        if len(self.extractors) != 1:
+            raise ValueError(
+                "groupby() requires a single extractor plot "
+                "or an explicit records(extractor=...) call."
+            )
+
         groups = {}
 
         for record in self.records():

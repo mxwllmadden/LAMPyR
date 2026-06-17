@@ -63,6 +63,8 @@ class Stage(ParadigmSegment):
         exits.
         """
         self.define_sessionparams()
+        global_paradigm_data = self.get_globalparadigmdata()
+        self.define_globalshaping(global_paradigm_data)
         try:
             stage_paradigm_data = self.paradigmdata.get(self.slug, {})
             self.define_task(stage_paradigm_data)
