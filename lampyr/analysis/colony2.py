@@ -86,13 +86,24 @@ class SessionQuery:
     def __init__(self,
                  colony,
                  mouseids: Tuple[str, ...],
-                 predicates: Tuple[Callable, ...] = ()):
+                 predicates: Tuple[Callable, ...] = (),
+                 clauses: Tuple[str, ...] = ()):
         self.colony = colony
         self.mouseids = mouseids
         self.predicates = predicates
+        self.clauses = clauses
 
-    def _clone(self, predicate: Callable):
-        return SessionQuery(self.colony, self.mouseids, self.predicates + (predicate,))
+    def _clone(self, predicate: Callable, clause: str = None):
+        clauses = self.clauses
+        if clause is not None:
+            clauses = clauses + (clause,)
+
+        return SessionQuery(
+            self.colony,
+            self.mouseids,
+            self.predicates + (predicate,),
+            clauses,
+        )
 
     def session(self, sessionid):
         for mouseid, entry in self._matched_entries():
@@ -116,11 +127,12 @@ class SessionQuery:
             if sessionid not in (None, "")
         }
 
-        return self.where(
+        return self._clone(
             lambda entry: (
                 self.colony._sessionid(entry) is not None
                 and str(self.colony._sessionid(entry)) in selected_ids
-            )
+            ),
+            f"sessionids in [{', '.join(sorted(selected_ids))}]",
         )
 
     def range(self, key: str, minimum=None, maximum=None):
@@ -146,7 +158,7 @@ class SessionQuery:
 
             return True
 
-        return self._clone(predicate)
+        return self._clone(predicate, self._format_range_clause(key, minimum, maximum))
 
     def duration(self, minimum=None, maximum=None):
         return self.range("duration", minimum, maximum)
@@ -237,7 +249,10 @@ class SessionQuery:
 
             return True
 
-        return self._clone(predicate)
+        return self._clone(
+            predicate,
+            self._format_date_range_clause(start, end),
+        )
     
     def age(self, minimum=None, maximum=None):
         """
@@ -263,7 +278,7 @@ class SessionQuery:
     
             return True
     
-        return self._clone(predicate)
+        return self._clone(predicate, self._format_range_clause("age_days", minimum, maximum))
     
     def younger_than(self, days: float):
         """
@@ -271,11 +286,12 @@ class SessionQuery:
         """
         cutoff = time() - days * 24 * 60 * 60
     
-        return self.where(
+        return self._clone(
             lambda entry: (
                 self.colony._starttime(entry) is not None
                 and self.colony._starttime(entry) >= cutoff
-            )
+            ),
+            f"age_days <= {days}",
         )
     
     def older_than(self, days: float):
@@ -284,11 +300,12 @@ class SessionQuery:
         """
         cutoff = time() - days * 24 * 60 * 60
     
-        return self.where(
+        return self._clone(
             lambda entry: (
                 self.colony._starttime(entry) is not None
                 and self.colony._starttime(entry) < cutoff
-            )
+            ),
+            f"age_days > {days}",
         )
 
     def filters(self, **filters):
@@ -330,8 +347,50 @@ class SessionQuery:
             for _, entry in self._matched_entries()
         ]
 
+    def matched_mouseids(self) -> List[str]:
+        seen = set()
+        result = []
+
+        for mouseid, _ in self._matched_entries():
+            if mouseid in seen:
+                continue
+
+            seen.add(mouseid)
+            result.append(mouseid)
+
+        return result
+
     def count(self) -> int:
         return len(self._matched_entries())
+
+    def describe(self) -> str:
+        matched_mouseids = self.matched_mouseids()
+        lines = [
+            (
+                f"Resolved Mouse IDs ({len(matched_mouseids)}): "
+                f"{', '.join(map(str, matched_mouseids)) if matched_mouseids else '(none)'}"
+            ),
+        ]
+
+        if self.clauses:
+            lines.append("Session Filters:")
+            lines.extend(f"- {clause}" for clause in self.clauses)
+        else:
+            lines.append("Session Filters: none")
+
+        return "\n".join(lines)
+
+    def mice(self) -> list:
+        return [
+            self.colony.load_mouse(mouseid)
+            for mouseid in self.matched_mouseids()
+        ]
+
+    def entries(self) -> list:
+        return [
+            entry
+            for _, entry in self._matched_entries()
+        ]
 
     def objects(self) -> list:
         return [
@@ -403,18 +462,56 @@ class SessionQuery:
                 self.colony,
                 (mouseid,),
                 self.predicates,
+                self.clauses,
             )
             selected_sessionids.extend(
                 mouse_query.last_ids(n)
             )
 
-        return self.sessionids(selected_sessionids)
+        return self.sessionids(selected_sessionids)._with_clause(f"tail({n}) per mouse")
 
     def bymouse(self) -> dict:
         return {
-            mouseid: SessionQuery(self.colony, (mouseid,), self.predicates)
-            for mouseid in self.mouseids
+            mouseid: SessionQuery(
+                self.colony,
+                (mouseid,),
+                self.predicates,
+                self.clauses,
+            )
+            for mouseid in self.matched_mouseids()
         }
+
+    def _with_clause(self, clause: str):
+        return SessionQuery(
+            self.colony,
+            self.mouseids,
+            self.predicates,
+            self.clauses + (clause,),
+        )
+
+    @staticmethod
+    def _format_bound(value):
+        if value is None:
+            return "None"
+        if isinstance(value, datetime):
+            return value.isoformat(sep=" ", timespec="seconds")
+        if isinstance(value, date):
+            return value.isoformat()
+        return str(value)
+
+    @classmethod
+    def _format_range_clause(cls, key: str, minimum=None, maximum=None):
+        return (
+            f"{key} in "
+            f"[{cls._format_bound(minimum)}, {cls._format_bound(maximum)}]"
+        )
+
+    @classmethod
+    def _format_date_range_clause(cls, start=None, end=None):
+        return (
+            "date_range in "
+            f"[{cls._format_bound(start)}, {cls._format_bound(end)}]"
+        )
 
 
 class Colony:

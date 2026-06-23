@@ -999,7 +999,7 @@ class BanditParadigm3(Paradigm):
             if stage_data.get('consecutive_good', 0) >= 1:
                 self.progress()
         elif current_stage is AltWheelStage1B3:
-            if stage_data.get('consecutive_good', 0) >= 2:
+            if stage_data.get('consecutive_good', 0) >= 1:
                 self.progress()
         elif current_stage is AltWheelStage2B3:
             if stage_data.get('consecutive_good', 0) >= 1:
