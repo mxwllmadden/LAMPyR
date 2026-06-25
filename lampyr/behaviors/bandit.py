@@ -159,6 +159,7 @@ class BanditTrial(Trial):
         self.wait(self.iti1_s)
         self.trigger_event('pretrialstart')
         self.log_info('Waiting for pretrial wheel hold...')
+        self.wait(self.pt_hold_s)
         self.waitfor(
             condition=lambda: self.rig.wheel.movement_total_since(
                 time.time()-self.pt_hold_s) < self.pt_mvmt_threshold_deg,
