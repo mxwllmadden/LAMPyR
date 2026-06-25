@@ -168,9 +168,10 @@ class Config(ConfigFile):
         },
         'rig': {
             'name': None,
-            'calibrated': 0,
-            'configured': False,
-            'sipper_calib': 10000
+            'rig_type' : 'BanditRig',
+            'calibrated': 0, #To be removed
+            'configured': False, #To be removed
+            'sipper_calib': 10000 #To be removed
         },
         'notifications': {}
     }

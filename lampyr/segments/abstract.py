@@ -392,8 +392,10 @@ class Segment(ABC):
         if self.rank == 0:
             self.log_notice('Detected that self is highest ranked segment')
             self.log_notice('Extracting rig data and saving to session')
-            self.session.rigdata = self.rig.data.get_report_snippet(self.session.starttime,
-                                                                    time.time())
+            rig_json_representation, rig_data_numerical = self.rig.dump()
+            self.session.rigproperties = rig_json_representation
+            self.session.rigdata = rig_data_numerical
+            
             self.log_notice('Session data is now LOCKED')
             self.session.lock()
         else:

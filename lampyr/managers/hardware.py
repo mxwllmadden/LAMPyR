@@ -7,9 +7,13 @@ Created on Mon Aug 25 18:40:27 2025
 
 from lampyr.managers.abstract import AbstractManager
 from lampyr.rigs.rigcontrol import ArduinoBanditRig_0
+from lampyr.rigs.abstract import all_rig_definitions, AbstractHardwareRig
+from lampyr.rigs.banditrig import BanditRig
 
 import numpy as np
 import time
+
+
 
 class RigManager(AbstractManager):
     """
@@ -25,6 +29,9 @@ class RigManager(AbstractManager):
 
     def start(self):
         """Initialise rig and connection state to disconnected."""
+        all_rigs = all_rig_definitions()
+        rig_type = self.config.get('rig.rig_type')
+        self.rig_cls = all_rigs.get(rig_type, BanditRig)
         self.rig = None
         self.connected = False
 
@@ -37,22 +44,19 @@ class RigManager(AbstractManager):
         ``config['rig.sipper_calib']``.
         """
         self._output_func('Connecting to Arduino Rig...')
-        self.rig = ArduinoBanditRig_0()
+        self.rig = self.rig_cls()
         self._output_func('Creating serial monitor thread...')
-        self.rig.listen()
+        self.rig.start()
         self._output_func('Setting stored rig sipper calibration...')
-        self.rig.reward.setsize(self.config.get('rig.sipper_calib'))
+        self.rig.reward.setsize(self.config.get('rig.sipper_calib')) #to be removed
         self.connected = True
 
     def disconnect(self):
         """
         Stop the serial monitor thread and close the rig serial port.
         """
-        self._output_func('Closing monitoring thread...')
-        self.rig.abort()
-        time.sleep(2)
-        self._output_func('Disconnecting from Arduino Rig...')
-        self.rig.close()
+        self._output_func('Closing rig monitoring threads...')
+        self.rig.stop()
         self.connected = False
 
     def calibrate(self):

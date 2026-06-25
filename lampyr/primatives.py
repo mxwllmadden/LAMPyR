@@ -168,6 +168,7 @@ class Session:
     # Session Events and rig data
     eventlist: List = field(default_factory=list)
     rigdata: dict = None
+    rigproperties : dict = None
 
     def __setattr__(self, key, value):
         """
@@ -218,7 +219,7 @@ class Session:
             ("trial", self.trial_min, self.trial_limit, self.trial),
             ("reward", self.reward_min, self.reward_limit, self.rewards),
             ("reward_amount", self.reward_amount_min,
-             self.reward_amount_limit, self.reward_amount),
+             self.reward_amount_limit, round(self.reward_amount, 2)),
             ("abstention", self.abstention_min,
              self.abstention_limit, self.abstention),
             ("participation", self.participation_min,
@@ -228,7 +229,7 @@ class Session:
         ]
         msg = ''
         for name, min_val, max_val, val in fields:
-            msg += f"{name:22}: {str(val):6} (Min: {str(min_val):6} Max: {str(max_val):6})\n"
+            msg += f"{name:22}: {str(val):4} (Min: {str(min_val):6} Max: {str(max_val):6})\n"
         msg += f"{'starttime':22}: {self.starttime}\n"
         msg += f"{'endtime':22}: {self.endtime}\n"
         msg += f"{'uniquesessionid':22}: {self.uniquesessionid}\n"
