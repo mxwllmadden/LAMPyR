@@ -8,9 +8,13 @@
 // Pin Definitions
 // -----------------------------------------------------------------------------
 
+#define RIG_ID "BanditHudaHub_1"
+
 #define SPEAKERPIN          6
 #define REWARDPIN           9
 #define MANUALREWARDPIN     13
+#define LASERPIN            11
+#define CAM_PIN
 
 #define LICKOMETERDIGPIN    A2
 #define LICKOMETERANALOGPIN A3
@@ -26,6 +30,7 @@
 
 #define LICK_PERIOD_MS      10
 #define ROTARY_PERIOD_MS    20
+#define CAM_PULSE_PERIOD_MS 50
 
 // -----------------------------------------------------------------------------
 // Hardware
@@ -39,6 +44,12 @@ Servo wheelLock;
 // -----------------------------------------------------------------------------
 // State
 // -----------------------------------------------------------------------------
+
+// Laser
+bool rampingDown = false;
+uint32_t rampStartMs = 0;
+uint32_t rampDurationMs = 0;
+int rampStartPWM = 255;
 
 // Rotary
 long rotarypos = 0;
@@ -243,12 +254,68 @@ void executeCommand(char cmd)
             break;
         }
 
+        case 'z': // Start "zap" protocol for laser stim
+        {
+            rampingDown = false;
+            analogWrite(LASERPIN, 255);
+            break;
+        }
+
+        case 'x': // Hardcutoff to laser stim
+        {
+            rampingDown = false;
+            analogWrite(LASERPIN, 0);
+            break;
+        }
+
+        case 'c': // Slow rampdown to laser stim
+        {
+            String str = Serial.readStringUntil('\n');
+
+            rampDurationMs = str.toInt() * 1000UL;
+            rampStartMs = millis();
+            rampStartPWM = 255;
+
+            rampingDown = true;
+
+            break;
+        }
+
+        case 'l': // Lock the wheel
+        {
+            wheelLock.write(60);
+            break;
+        }
+
+        case 'u': // Unlock the wheel
+        {
+            wheelLock.write(90);
+            break;
+        }
+
+        case 'a': // Set to specific angle
+        {
+            String str = Serial.readStringUntil('\n');
+
+            angle = str.toInt();
+            wheelLock.write(angle);
+            break;
+        }
+
         case 't':
         {
             reportTime();
             break;
         }
 
+        
+        case 'i':
+        {
+            Serial.print(millis());
+            Serial.print("\tI\t");
+            Serial.println(RIG_ID);
+            break;
+        }
         case 'e':
         {
             reportRewardError();
@@ -262,24 +329,6 @@ void executeCommand(char cmd)
             loopCounter = 0;
             loopCounterStart = millis();
 
-            break;
-        }
-        case 'l': // Lock the wheel
-        {
-            wheelLock.write(55);
-            break;
-        }
-        case 'u': // Unlock the wheel
-        {
-            wheelLock.write(90);
-            break;
-        }
-        case 'a': // Unlock the wheel
-        {
-            String str = Serial.readStringUntil('\n');
-
-            angle = str.toInt();
-            wheelLock.write(angle);
             break;
         }
     }
@@ -390,6 +439,28 @@ void loop()
 
             pauseAfterReport = true;
             pauseStart = millis();
+        }
+    }
+
+    // -------------------------------------------------------------
+    // Laser rampdown
+    // -------------------------------------------------------------
+    if (rampingDown)
+    {
+        uint32_t elapsed = millis() - rampStartMs;
+
+        if (elapsed >= rampDurationMs)
+        {
+            analogWrite(LASERPIN, 0);
+            rampingDown = false;
+        }
+        else
+        {
+            int pwm =
+                rampStartPWM -
+                ((long)rampStartPWM * elapsed) / rampDurationMs;
+
+            analogWrite(LASERPIN, pwm);
         }
     }
 }
