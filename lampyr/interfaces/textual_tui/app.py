@@ -655,17 +655,17 @@ class LampyrApp(App):
     def on_mount(self) -> None:
         self.theme = "textual-dark"
         self.push_screen(MainScreen())
-        self._check_calibration()
-        self.set_interval(60, self._check_calibration)
+        self._heartbeat()
+        self.set_interval(1200, self._heartbeat) #every 20 minutes
 
-    def _check_calibration(self) -> None:
+    def _heartbeat(self) -> None:
         """Push CalibrationConfirmScreen whenever calibration has expired.
 
         Scans the full screen stack so that a NumpadModal sitting on top of a
         CalibrationScreen, or an already-open confirm screen, does not trigger
         a second push.
         """
-        expired = self.lampyr.config.get("rig.calibrated") < time.time() - 216000
+        expired = self.lampyr.config.get("rig.calibrated") < time.time() - (5*24*60*60)
         already_active = any(
             isinstance(s, (CalibrationScreen, CalibrationConfirmScreen))
             for s in self.screen_stack
@@ -673,6 +673,13 @@ class LampyrApp(App):
         session_running = any(isinstance(s, RunScreen) for s in self.screen_stack)
         if expired and not already_active and not session_running:
             self.push_screen(CalibrationConfirmScreen())
+        if not session_running:
+            try:
+                self.lampyr.datamanager.heartbeat_filetouch()
+            except Exception as e:
+                self.notify(
+                    f"Heartbeat file touch failed.\n{type(e).__name__}: {e}",
+                    severity="error", timeout=20*60)
 
 
 if __name__ == "__main__":

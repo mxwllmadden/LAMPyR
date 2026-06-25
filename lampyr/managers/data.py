@@ -6,7 +6,7 @@ Created on Mon Aug 25 18:40:05 2025
 """
 
 from lampyr.managers.abstract import AbstractManager
-from lampyr.files import savemousefile, loadmousefile, loadsessionfile, savesessionfile
+from lampyr.files import savemousefile, loadmousefile, loadsessionfile, savesessionfile, loadjson, savejson
 import os
 from pathlib import Path
 import json
@@ -79,7 +79,8 @@ def hashcheck_copyoverwrite(sourcefile, targetfile):
 
 
 class DataHandler(AbstractManager):
-    CONFIG_FAILSAFE_DEFAULT = {'sessions': []}
+    CONFIG_FAILSAFE_DEFAULT = {'sessions': [],
+                               'files': [],}
 
     def start(self):
         """
@@ -222,7 +223,7 @@ class DataHandler(AbstractManager):
         -------
         None
         """
-        failures = self.config_failsafe_data.get(failure_type)
+        failures = self.config_failsafe_data.get(failure_type, [])
         failures.append({'fps': fps,
                          'target': target})
         self.config_failsafe_data.set(failure_type, failures)
@@ -475,6 +476,13 @@ class DataHandler(AbstractManager):
             print('Successfully registered '+
                   f'{len(mouse_obj.history)}/{len(sessionlist)} sessions')
             self.savemouse(mouse_obj)
+    
+    def heartbeat_filetouch(self):
+        datadir = self.config.get('lampyr.mice_directory')
+        hbeatfile = os.path.join(datadir, 'heartbeat.file')
+        if not os.path.exists(hbeatfile):
+            savejson(hbeatfile, {})
+        loadjson(hbeatfile)
 
 
 class MouseManager(AbstractManager):
