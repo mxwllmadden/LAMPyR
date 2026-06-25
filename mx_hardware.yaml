@@ -4,6 +4,7 @@ channels:
   - defaults
 dependencies:
   - python=3.12
+  - spyder-kernels=3.1
   - pytest
   - pyserial
   - numpy>=1.21
@@ -16,3 +17,4 @@ dependencies:
   - pip
   - h5py
   - requests
+  - opencv
