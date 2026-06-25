@@ -169,6 +169,8 @@ class Session:
     eventlist: List = field(default_factory=list)
     rigdata: dict = None
     rigproperties : dict = None
+    extendeddata : list = None #populated on shutdown
+    _extendeddata : list = None
 
     def __setattr__(self, key, value):
         """

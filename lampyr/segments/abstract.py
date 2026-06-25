@@ -10,6 +10,7 @@ import time
 from copy import deepcopy
 from typing import Callable, List, Literal
 from abc import ABC, abstractmethod
+import os
 
 from lampyr.primatives import Mouse, Session, uniqueid
 
@@ -392,12 +393,20 @@ class Segment(ABC):
         if self.rank == 0:
             self.log_notice('Detected that self is highest ranked segment')
             self.log_notice('Extracting rig data and saving to session')
-            rig_json_representation, rig_data_numerical = self.rig.dump()
+            rig_json_representation, rig_data_numerical, rig_extended_data = self.rig.dump()
             self.session.rigproperties = rig_json_representation
             self.session.rigdata = rig_data_numerical
+            self.session._extendeddata = []
+            self.session.extendeddata = \
+                [os.path.join(e['type'],
+                              os.path.basename(e['fp'])
+                              )
+                 for e in rig_extended_data]
             
             self.log_notice('Session data is now LOCKED')
             self.session.lock()
+            
+            
         else:
             self.log_debug('Storing reference to self in parent segment')
             self.parent.subdata.append(self.uniqueid)

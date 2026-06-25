@@ -114,7 +114,8 @@ class SerialInterface_ArduinoTRV(AbstractInterface):
 
     def stop(self):
         self.abort_flag = True
-        time.sleep(2)
+        if self.thread is not None:
+            self.thread.join(timeout=2)
         self.ser.close()
 
     def dump(self):
@@ -127,23 +128,28 @@ class CameraInterface_Arducam(AbstractInterface):
               camera_index = 0,
               tempfiletarget = None,
               playback_framerate = 20,
-              check_cooldown_ms = 10
+              check_cooldown_ms = 10,
+              height = 480,
+              width = 640,
+              data_type = 'face_cam'
               ):
         #settings
         self.camera_index = camera_index
         self.tempfiletarget = tempfiletarget or 'vid.avi'
         self.fps = playback_framerate
-        self.check_cooldown_ms
+        self.height = height
+        self.width = width
+        self.data_type = 'face_cam'
         
         self.data = InterfaceData(report_values = ['unix_time','frame_num'],
                                   report_types = ['cam_frame_times'])
         
         # Threading/Runtime
-        self.lock = threading.Lock()
         self.abort_flag = False
         self.thread = None
-        self.frame_idx = 0
-        self.current_frame = None
+        self.idx = 0
+        self.check_cooldown_ms = check_cooldown_ms
+        self.ready = threading.Event()
         
         # set during startup
         self.cap = None
@@ -155,31 +161,66 @@ class CameraInterface_Arducam(AbstractInterface):
         if not self.cap.isOpened():
             self.cap.release()
             raise RuntimeError("Could not open Camera.")
-        self.cap.set(cv2.CAP_PROP_CONVERT_RGB, 0)
-        width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
         
-        fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+        fourcc = cv2.VideoWriter_fourcc(*"XVID")
         self.out = cv2.VideoWriter(self.tempfiletarget,
                                    fourcc, self.fps,
-                                   (width, height),
+                                   (self.width, self.height),
                                    isColor=False)
         if not self.out.isOpened():
             self.cap.release()
             raise RuntimeError("Could not open VideoWriter.")
         
-        self.thread = threading.Thread(target=self._listen, )
+        self.thread = threading.Thread(target=self._listen,
+                                       daemon=True)
+        self.thread.start()
     
     def _listen(self):
+        import cv2
+        self.ready.set()
         while not self.abort_flag:
             ret, frame = self.cap.read()
-            
-            time.sleep()
+            if ret and frame is not None:
+                readtime = time.time()
+                print(frame.shape, frame.dtype)
+                #Force Greyscale
+                if len(frame.shape) == 3:
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                # Force correct size for VideoWriter if driver returns a different shape.
+                if frame.shape[1] != self.width or frame.shape[0] != self.height:
+                    frame = cv2.resize(frame, (self.width, self.height))
+                
+
+                self.out.write(frame)
+                self.data.log_report('cam_frame_times', 
+                                     unix_time = readtime,
+                                     frame_num = self.idx)
+                self.idx+=1
+            else:
+                time.sleep(self.check_cooldown_ms/1000)
+        
+    
+    def stop(self):
+        self.abort_flag = True
+        if self.thread is not None:
+            self.thread.join(timeout=2)
+        if self.out is not None:
+            self.out.release()
+        self.cap.release()
+        self.ready = False
+    
+    def dump(self):
+        return {'DIMENSIONS' : (self.width, self.height),
+                'FRAMES_CAPTURED' : self.idx,
+                'tempfiletarget' : self.tempfiletarget,
+                'playback_framerate' : self.fps}
 
 
 if __name__ == '__main__':
-    interface = SerialInterface_ArduinoTRV()
+    interface = CameraInterface_Arducam()
     interface.start()
-    time.sleep(5)
+    time.sleep(10)
     interface.stop()
     print(interface.data.reports)

@@ -80,7 +80,7 @@ def hashcheck_copyoverwrite(sourcefile, targetfile):
 
 class DataHandler(AbstractManager):
     CONFIG_FAILSAFE_DEFAULT = {'sessions': [],
-                               'files': [],}
+                               'files': [], }
 
     def start(self):
         """
@@ -141,8 +141,8 @@ class DataHandler(AbstractManager):
         for mid in miceids:
             try:
                 mfile_bname = os.path.join(data_dir,
-                                         mid,
-                                         mid)
+                                           mid,
+                                           mid)
                 bup_mfile_bname = os.path.join(apdir,
                                                mid)
                 mfmove = hashcheck_copyoverwrite(
@@ -445,7 +445,24 @@ class DataHandler(AbstractManager):
                       "abstention", "participation"]:
             sessionentry[entry] = getattr(session, entry)
         mouse.history.append(sessionentry)
-    
+
+    def collect_extended_data(self, session: Session):
+        if session._extendeddata is None:
+            return
+        mouseid = session.mouseid
+        data_dir = self.config.get('lampyr.mice_directory')
+        for e in session._extendeddata:
+            fname = os.path.basename(e['fp'])
+            target_fp = os.path.join(data_dir,
+                                     mouseid,
+                                     'lampyr_extendeddata',
+                                     session.uniquesessionid,
+                                     e['type'],
+                                     fname)
+            os.makedirs(os.path.dirname(target_fp), exist_ok=True)
+            shutil.move(e['fp'], target_fp)
+            self._output_func('Collected {fname}')
+
     def _mouse_session_list_from_files(self, mouseid):
         data_dir = self.config.get('lampyr.mice_directory')
         dir_fp = os.path.join(data_dir,
@@ -456,7 +473,7 @@ class DataHandler(AbstractManager):
         all_sessions = [Path(p).name.removesuffix('.lampyr.json')
                         for p in all_sessions]
         return all_sessions
-    
+
     def reconstruct_all_mouse_history_from_files(self):
         mouselist, _ = self.mouselist()
         for mouse in mouselist:
@@ -473,10 +490,10 @@ class DataHandler(AbstractManager):
                     self.register_session_to_mouse(mouse_obj, s)
                 except:
                     print(f'Failed to parse {mouse} - {session}')
-            print('Successfully registered '+
+            print('Successfully registered ' +
                   f'{len(mouse_obj.history)}/{len(sessionlist)} sessions')
             self.savemouse(mouse_obj)
-    
+
     def heartbeat_filetouch(self):
         datadir = self.config.get('lampyr.mice_directory')
         hbeatfile = os.path.join(datadir, 'heartbeat.file')
@@ -531,7 +548,7 @@ class MouseManager(AbstractManager):
         mouse = Mouse(mouseid=mouseid, **kwargs)
         self.mouse = mouse
         self.save()
-    
+
     def retire(self):
         """
         Marks mouse as retired
@@ -548,7 +565,7 @@ class MouseManager(AbstractManager):
         """
         self.mouse.retired = True
         self.save()
-        
+
     def deretire(self):
         self.mouse.retired = False
         self.save()

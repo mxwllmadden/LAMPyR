@@ -9,6 +9,8 @@ NOT YET IMPLEMENTED
 """
 from abc import ABC, abstractmethod
 from threading import Lock
+from collections import namedtuple
+import os
 
 from typing import List
 
@@ -21,9 +23,9 @@ def all_rig_definitions():
     return rigs
 
 class AbstractHardwareRig(ABC):
-    def __init__(self, *args, rig_config = None, **kwargs):
+    def __init__(self, *args, config = None, **kwargs):
         self.interfaces = {}
-        self.rig_config = rig_config or {}
+        self.config = config or {} # this is expected to be the lampyr config object
         self.setup(*args, **kwargs)
     
     @abstractmethod
@@ -67,12 +69,18 @@ class AbstractHardwareRig(ABC):
     def dump(self):
         accumulated_json_data = {}
         accumulated_array_data = {}
+        extended_data_files = []
         accumulated_json_data['RIG_TYPE'] = self.__class__.__name__
         for interfacename, interface in self.interfaces.items():
             accumulated_json_data[interfacename] = interface.dump()
             accumulated_json_data[interfacename]['INTERFACE_TYPE'] = \
                 interface.__class__.__name__
             accumulated_json_data[interfacename]['REPORTS'] = []
+            extendeddata = interface.extendeddata
+            
+            accumulated_json_data[interfacename]['EXTENDED_DATA'] = extendeddata.copy()
+            extended_data_files.extend(extendeddata.copy())
+            
             for reporttype in interface.data.reports:
                 if reporttype not in accumulated_array_data:
                     accumulated_array_data[reporttype] = interface.data.reports[reporttype]
@@ -81,7 +89,7 @@ class AbstractHardwareRig(ABC):
                     rtype = f'{interfacename}_{reporttype}'
                     accumulated_array_data[rtype] = interface.data.reports[reporttype]
                     accumulated_json_data[interfacename]['REPORTS'].append(rtype)
-        return accumulated_json_data, accumulated_array_data
+        return accumulated_json_data, accumulated_array_data, extended_data_files
 
 
 class InterfaceData:
@@ -196,9 +204,11 @@ class InterfaceData:
             }
         return values
 
+
 class AbstractInterface(ABC):
     def __init__(self, *args, **kwargs):
         self.data = None
+        self.extendeddata = []
         self.setup(*args, **kwargs)
     
     @abstractmethod
@@ -216,6 +226,10 @@ class AbstractInterface(ABC):
     @abstractmethod
     def dump(self):
         pass
+    
+    def register_extendeddatafile(self, filepath, data_type):
+        self.extendeddata.append({'fp' : filepath,
+                                  'type' : data_type})
 
 class Component(ABC):
     def __init__(self, *args, **kwargs):

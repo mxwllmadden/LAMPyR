@@ -43,10 +43,11 @@ class RigManager(AbstractManager):
         starts the serial listener thread, and sets the dispenser size from
         ``config['rig.sipper_calib']``.
         """
+        self._output_func('Loading rig config')
         self._output_func('Connecting to Arduino Rig...')
         self.rig = self.rig_cls()
         self._output_func('Creating serial monitor thread...')
-        self.rig.start()
+        self.rig.start(config = self.config)
         self._output_func('Setting stored rig sipper calibration...')
         self.rig.reward.setsize(self.config.get('rig.sipper_calib')) #to be removed
         self.connected = True
