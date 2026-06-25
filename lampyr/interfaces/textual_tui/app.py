@@ -454,7 +454,7 @@ class RunScreen(Screen):
                 out("\x1b[33mRun 'lampyr rig configure' or use developer mode.\x1b[0m")
                 error = True
                 return
-            if calibrated < time.time() - 216000:
+            if calibrated < time.time() - (5 * 24 * 60 * 60):
                 out("\x1b[1;31mERROR: Rig calibration has expired.\x1b[0m")
                 out("\x1b[33mTap CALIBRATE on the main screen.\x1b[0m")
                 error = True
