@@ -169,6 +169,8 @@ class Config(ConfigFile):
         'rig': {
             'name': None,
             'rig_type' : 'BanditRig',
+            'rig_type_last_load' : None, #not implemented but will eventually force configuration
+            'configuration' : {}, #implicit area for persistant rig data
             'calibrated': 0, #To be removed
             'configured': False, #To be removed
             'sipper_calib': 10000 #To be removed
