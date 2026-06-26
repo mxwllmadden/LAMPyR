@@ -45,9 +45,9 @@ class RigManager(AbstractManager):
         """
         self._output_func('Loading rig config')
         self._output_func('Connecting to Arduino Rig...')
-        self.rig = self.rig_cls()
+        self.rig = self.rig_cls(config = self.config)
         self._output_func('Creating serial monitor thread...')
-        self.rig.start(config = self.config)
+        self.rig.start()
         self._output_func('Setting stored rig sipper calibration...')
         self.rig.reward.setsize(self.config.get('rig.sipper_calib')) #to be removed
         self.connected = True
@@ -56,8 +56,14 @@ class RigManager(AbstractManager):
         """
         Stop the serial monitor thread and close the rig serial port.
         """
+        if self.rig is None:
+            return
+        if not self.connected:
+            self._output_func('Rig is already shut down...')
+            return
         self._output_func('Closing rig monitoring threads...')
         self.rig.stop()
+        self.rig.disconnect()
         self.connected = False
 
     def calibrate(self):

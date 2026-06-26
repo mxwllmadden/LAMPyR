@@ -25,6 +25,7 @@ def all_rig_definitions():
 class AbstractHardwareRig(ABC):
     def __init__(self, *args, config = None, **kwargs):
         self.interfaces = {}
+        self.components = {}
         self.config = config or {} # this is expected to be the lampyr config object
         self.setup(*args, **kwargs)
     
@@ -52,6 +53,7 @@ class AbstractHardwareRig(ABC):
         if hasattr(self, name):
             raise ValueError('That name is already reserved')
         setattr(self, name, component_obj)
+        self.components[name] = component_obj
     
     def register_interface(self, name, interface_obj):
         if name in self.interfaces:
@@ -63,8 +65,14 @@ class AbstractHardwareRig(ABC):
             interface.start()
     
     def stop(self):
+        for component in self.components.values():
+            component.stop()
         for interface in self.interfaces.values():
             interface.stop()
+    
+    def disconnect(self):
+        for interface in self.interfaces.values():
+            interface.disconnect()
     
     def dump(self):
         accumulated_json_data = {}
@@ -224,6 +232,10 @@ class AbstractInterface(ABC):
         pass
     
     @abstractmethod
+    def disconnect(self):
+        pass
+    
+    @abstractmethod
     def dump(self):
         pass
     
@@ -237,4 +249,7 @@ class Component(ABC):
     
     @abstractmethod
     def setup(self, *args, **kwargs):
+        pass
+    
+    def stop(self):
         pass

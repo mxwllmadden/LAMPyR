@@ -392,11 +392,18 @@ class Segment(ABC):
         self.session.segments[self.uniqueid] = all_data
         if self.rank == 0:
             self.log_notice('Detected that self is highest ranked segment')
+            self.log_notice('Stopping data aquisition')
+            self.rig.stop()
+            self.log_debug('Allowing grace period for rig data to finish accumulating')
+            time.sleep(2)
+            if self.lampyr is None:
+                self.log_warning("Detected no lampyr instance, attempting to fully close rig")
+                self.rig.disconnect()
             self.log_notice('Extracting rig data and saving to session')
             rig_json_representation, rig_data_numerical, rig_extended_data = self.rig.dump()
             self.session.rigproperties = rig_json_representation
             self.session.rigdata = rig_data_numerical
-            self.session._extendeddata = []
+            self.session._extendeddata = rig_extended_data
             self.session.extendeddata = \
                 [os.path.join(e['type'],
                               os.path.basename(e['fp'])

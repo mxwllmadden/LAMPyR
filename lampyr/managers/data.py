@@ -268,6 +268,7 @@ class DataHandler(AbstractManager):
                               mouseid,
                               'lampyr_sessionhistory')
         savesessionfile(session, dir_fp)
+        self.collect_extended_data(session)
         if register is True and self.lampyr is not None:
             self.register_session_to_mouse(self.lampyr.mouse,
                                            session)

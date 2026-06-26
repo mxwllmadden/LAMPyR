@@ -523,11 +523,16 @@ class RunScreen(Screen):
             except ValueError:
                 pass
         else:
-            # Session finished → return to main
+            # Session finished → return to main, not the prior task-selection screen.
             if self._animal_timer is not None:
                 self._animal_timer.cancel()
                 self._animal_timer = None
-            self.app.pop_screen()
+            for screen in reversed(self.app.screen_stack):
+                if isinstance(screen, MainScreen):
+                    screen.pop_until_active()
+                    break
+            else:
+                self.app.pop_screen()
 
 
 # ---------------------------------------------------------------------------

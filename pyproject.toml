@@ -18,6 +18,11 @@ dependencies = [
 readme = ""
 requires-python = ">=3.10"
 
+[project.optional-dependencies]
+video = [
+    "opencv-python",
+]
+
 [project.urls]
 Homepage = "https://github.com/mxwllmadden"
 

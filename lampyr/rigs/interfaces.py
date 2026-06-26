@@ -18,6 +18,8 @@ class SerialInterface_ArduinoTRV(AbstractInterface):
         self.data = InterfaceData(
             ['arduino_time', 'unix_time', 'report_value'])
         self.abort_flag = False
+        self.stop_flag = False
+        self.thread = None
 
     def _find_device(self):
         from serial.tools import list_ports
@@ -42,9 +44,13 @@ class SerialInterface_ArduinoTRV(AbstractInterface):
         self.ser.flush()
 
     def start(self):
-        thread = threading.Thread(target=self.listen, daemon=True)
-        thread.start()
+        if self.thread is not None:
+            self.stop_flag = False
+            return
+        self.thread = threading.Thread(target=self.listen, daemon=True)
+        self.thread.start()
         time.sleep(2)
+            
 
     def listen(self):
         """
@@ -57,10 +63,12 @@ class SerialInterface_ArduinoTRV(AbstractInterface):
         self.ser.reset_input_buffer()
         self.ser.flush()
         while not self.abort_flag:
-            try:
-                self._readserial()
-            except Exception as error:
-                print(f'WARNING! Unknown serial read error occurred. {error}')
+            while not self.stop_flag:
+                try:
+                    self._readserial()
+                except Exception as error:
+                    print(f'WARNING! Unknown serial read error occurred. {error}')
+                time.sleep(0.001)
             time.sleep(0.001)
 
         self.abort_flag = False
@@ -111,9 +119,13 @@ class SerialInterface_ArduinoTRV(AbstractInterface):
     def send_command(self, cmd):
         cmdent = f'{cmd}\n'
         self.ser.write(cmdent.encode())
-
+    
     def stop(self):
+        self.stop_flag = True
+
+    def disconnect(self):
         self.abort_flag = True
+        self.stop_flag = True
         if self.thread is not None:
             self.thread.join(timeout=2)
         self.ser.close()
@@ -135,11 +147,19 @@ class CameraInterface_Arducam(AbstractInterface):
               ):
         #settings
         self.camera_index = camera_index
-        self.tempfiletarget = tempfiletarget or 'vid.avi'
+        if tempfiletarget is None:
+            from lampyr.primatives import uniqueid
+            import tempfile
+            import os
+            temp_dir = tempfile.gettempdir()
+            uniqueid = uniqueid('ArducamVideo', data_type)
+            self.tempfiletarget = os.path.join(temp_dir, f"{uniqueid}.avi")
+        else:
+            self.tempfiletarget = tempfiletarget
         self.fps = playback_framerate
         self.height = height
         self.width = width
-        self.data_type = 'face_cam'
+        self.data_type = data_type
         
         self.data = InterfaceData(report_values = ['unix_time','frame_num'],
                                   report_types = ['cam_frame_times'])
@@ -173,6 +193,9 @@ class CameraInterface_Arducam(AbstractInterface):
             self.cap.release()
             raise RuntimeError("Could not open VideoWriter.")
         
+        self.register_extendeddatafile(self.tempfiletarget,
+                                       self.data_type)
+        
         self.thread = threading.Thread(target=self._listen,
                                        daemon=True)
         self.thread.start()
@@ -184,7 +207,6 @@ class CameraInterface_Arducam(AbstractInterface):
             ret, frame = self.cap.read()
             if ret and frame is not None:
                 readtime = time.time()
-                print(frame.shape, frame.dtype)
                 #Force Greyscale
                 if len(frame.shape) == 3:
                     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -200,7 +222,6 @@ class CameraInterface_Arducam(AbstractInterface):
                 self.idx+=1
             else:
                 time.sleep(self.check_cooldown_ms/1000)
-        
     
     def stop(self):
         self.abort_flag = True
@@ -208,8 +229,15 @@ class CameraInterface_Arducam(AbstractInterface):
             self.thread.join(timeout=2)
         if self.out is not None:
             self.out.release()
-        self.cap.release()
-        self.ready = False
+        if self.cap is not None:
+            self.cap.release()
+        self.thread = None
+        self.out = None
+        self.cap = None
+        self.ready.clear()
+    
+    def disconnect(self):
+        pass
     
     def dump(self):
         return {'DIMENSIONS' : (self.width, self.height),
@@ -223,4 +251,5 @@ if __name__ == '__main__':
     interface.start()
     time.sleep(10)
     interface.stop()
+    interface.disconnect()
     print(interface.data.reports)

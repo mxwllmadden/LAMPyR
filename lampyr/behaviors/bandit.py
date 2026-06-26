@@ -24,15 +24,23 @@ def event_waterreward(self: BehaviorSegment):
     self.rig.reward.give()
     self.log_reward(0.005)
 
+
 def event_trialstart(self: BehaviorSegment):
     """Play the trial-start tone and log the event."""
     self.log_debug('Sending play trial tone command to rig')
     self.rig.play.begintrialtone()
 
-def event_response(self : BehaviorSegment):
+
+def event_response(self: BehaviorSegment):
     """Play the response registration tone and log the event"""
     self.log_debug('Sending play response tone command to rig')
     self.rig.play.responsetone()
+
+
+def event_laser_onset(self: BehaviorSegment):
+    self.rig.laser.begin()
+    self.log_debug('Sending laser constant illumination command to rig')
+
 
 # -------------- Define Habituation Trial/Task --------------
 
@@ -136,9 +144,17 @@ class BanditTrial(Trial):
     rewardprobs_perc: dict = field(default_factory=lambda: {'Left': 100,
                                                             'Right': 100,
                                                             'None': 0})
+
     reward_delay_s: float = 0
     iti2_s: float = 2.5
-    enable_wheel_lock : bool = False
+    enable_wheel_lock: bool = False
+
+    # laser stuff
+    response_laser_enabled: bool = False
+    response_laser_delay_s: float = 0.1
+
+    laserstop_trialend_offramp_enabled: bool = False
+    laserstop_trialend_offramp_ms: int = 500
 
     def setup(self):
         """Register trial events"""
@@ -153,9 +169,21 @@ class BanditTrial(Trial):
         self.register_event('response',
                             callback=event_response,
                             description='Wheel response registered')
+        self.register_event('laser_onset',
+                            callback=event_laser_onset,
+                            description='Laser Onset')
         self.log_debug(self.rewardprobs_perc)
 
+        if self.response_laser_enabled and (
+                self.response_laser_delay_s > self.reward_delay_s):
+            self.log_warning(
+                'Response laser delay cannot be larger than reward delay')
+            self.response_laser_delay_s = self.reward_delay_s
+            self.log_warning(f'response_laser_delay set to {self.reward_delay_s}')
+
     def perform(self):
+        laser_on = False
+
         self.wait(self.iti1_s)
         self.trigger_event('pretrialstart')
         self.log_info('Waiting for pretrial wheel hold...')
@@ -205,11 +233,17 @@ class BanditTrial(Trial):
         rand = random.random()
         self.log_debug(f'RAND:{rand},THRESH:{probability}')
         self.log_debug(f'Reward delay: {self.reward_delay_s}')
-        self.wait(self.reward_delay_s)
+        if self.response_laser_enabled and response != 'None':
+            self.wait(self.response_laser_delay_s)
+            self.trigger_event('laser_onset')
+            laser_on = True
+            self.wait(self.reward_delay_s - self.response_laser_delay_s)
+        else:
+            self.wait(self.reward_delay_s)
         anticipatory_licks = self.rig.licks.since(response_time)
         self.create_report('anticipatory_licks', anticipatory_licks)
         self.log_info(f'{anticipatory_licks} anticipatory licks logged')
-        reward_time = time.time()        
+        reward_time = time.time()
         if rand < probability:
             self.log_info(f'Reward given ({round(probability*100)})% chance.')
             self.trigger_event('reward')
@@ -224,6 +258,9 @@ class BanditTrial(Trial):
         self.log_info(f'{reward_licks} reward licks logged')
         self.rig.wheellock.unlock()
         self.log_info('Wheel Unlocked')
+        if self.laserstop_trialend_offramp_enabled and laser_on:
+            self.log_info('Laser ramping down')
+            self.rig.laser.rampdown(self.laserstop_trialend_offramp_ms)
 
     def response_loop(self):
         wheel_pos = self.rig.wheel.angle()
@@ -231,6 +268,9 @@ class BanditTrial(Trial):
             return 'Left'
         if wheel_pos > self.responsethresholds_deg['Right']:
             return 'Right'
+
+    def response_made(self) -> bool:
+        return self.reports.get('response', 'None') != 'None'
 
     def satisfiesblockcondition(self, counttype: str) -> bool:
         """
@@ -273,8 +313,26 @@ class BanditTask(Task):
     taskblocks_sizerange: tuple = (6, 15)
     taskblocks_blockcounttype: Literal['Reward',
                                        'Merit', 'RewardedMerit'] = 'Reward'
-    
-    enable_wheel_lock : bool = False
+
+    enable_wheel_lock: bool = False
+
+    current_response_trial_number: int = 0
+
+    # lasers
+    enable_laser_trials: bool = False
+    laser_trial_sequence: list = None
+    # laser param list
+    laser_trial_params = (
+        'response_laser_enabled',
+        'response_laser_delay_s',
+        'laserstop_trialend_offramp_enabled',
+        'laserstop_trialend_offramp_ms')
+    # laser onset/offset
+    response_laser_enabled: bool = False
+    response_laser_delay_s: float = 0.1
+
+    laserstop_trialend_offramp_enabled: bool = False
+    laserstop_trialend_offramp_ms: int = 500
 
     def setup(self):
         if self.target_mode == 'Random':
@@ -295,12 +353,24 @@ class BanditTask(Task):
         }
 
     def loop(self):
+        # if lasers are enabled, construct the laser parameters for the current trial
+        ltparams = {}
+        if self.enable_laser_trials:
+            if self.laser_trial_sequence is not None:
+                idx = self.current_response_trial_number % len(
+                    self.laser_trial_sequence)
+                if self.laser_trial_sequence[idx]:
+                    ltparams = {k: getattr(self, k)
+                                for k in self.laser_trial_params}
+
         trial = BanditTrial(parent=self,
                             reward_delay_s=self.reward_delay_s,
                             rewardprobs_perc=self._reward_probs[self._target],
-                            enable_wheel_lock = self.enable_wheel_lock)
+                            enable_wheel_lock=self.enable_wheel_lock,
+                            **ltparams)
         trial.run()
-
+        if trial.response_made():
+            self.current_response_trial_number += 1
         if self.taskblocks_enabled:
             if trial.satisfiesblockcondition(self.taskblocks_blockcounttype):
                 self._trialinblockcount += 1
@@ -324,7 +394,7 @@ class BanditTask(Task):
         if (self.rescue_trial_enabled
             and self.session.serial_abstention >= self.rescue_threshold
             and self._rescue_count < self.rescue_limit
-            and self._rescue_sincelast >= self.rescue_cooldown):
+                and self._rescue_sincelast >= self.rescue_cooldown):
             self.log_notice('Attempting to rescue performance...')
             rescue_trial = HabituationTrial(parent=self,
                                             slug='Rescue',
@@ -337,9 +407,9 @@ class BanditTask(Task):
             del rescue_trial
             self._rescue_count += 1
             self._rescue_sincelast = 0
-        
+
         if (self.session.serial_abstention >= 20
-            and self.session.serial_abstention % 10 == 0):
+                and self.session.serial_abstention % 10 == 0):
             self.notify(f'Animal has not responded in {self.session.serial_abstention} trials')
 
 # -------------- Define Training Stages and Training Paradigm --------------
@@ -592,7 +662,8 @@ class AltWheelStage2(ResponseAbstractStage):
 
         if (adj_val == 0 and (-0.15 < side_bias < 0.15)
                 and self.session.merit >= 150):
-            self.log_info('No/low bias and sufficient performance for good session')
+            self.log_info(
+                'No/low bias and sufficient performance for good session')
             consecutive_good_sessions += 1
         else:
             self.log_info('Bias or low performance detected')
@@ -745,8 +816,8 @@ class BanditParadigm(Paradigm):
                 self.progress()
         elif current_stage is BanditEndStage:
             pass
-        
-        
+
+
 # BANDIT PARADIGM 3 - Created 6.12.26 in response to issues with animal training
 # Animal response curves not sufficient
 @dataclass
@@ -911,7 +982,8 @@ class AltWheelStage2B3(ResponseAbstractStage):
 
         if (adj_val == 0 and (-0.15 < side_bias < 0.15)
                 and self.session.merit >= 150):
-            self.log_info('No/low bias and sufficient performance for good session')
+            self.log_info(
+                'No/low bias and sufficient performance for good session')
             consecutive_good_sessions += 1
         else:
             self.log_info('Bias or low performance detected')
@@ -927,6 +999,7 @@ class AltWheelStage2B3(ResponseAbstractStage):
         adj_val = max(-40, min(40, adj_val))
         global_paradigm_data['adjustmentvalue'] = adj_val
         stage_data['consecutive_good'] = consecutive_good_sessions
+
 
 @dataclass
 class BanditTrainingStageB3(ResponseAbstractStage):
@@ -981,6 +1054,47 @@ class BanditEndStageB3(ResponseAbstractStage):
     def define_shaping(self, stage_data):
         pass
 
+@dataclass
+class EXPeriment_LaserInhibitionRandom20(BanditTask):
+    slug : str = 'EXPeriment_LaserInhibitionRandom20'
+    rescue_trial_enabled : bool = False
+    enable_wheel_lock : bool = True
+    
+    reward_delay_s : float = 0.2
+    
+    enable_laser_trials: bool = True
+    response_laser_enabled: bool = True
+    laser_trial_sequence: list = None
+    response_laser_delay_s: float = 0.1
+    laserstop_trialend_offramp_enabled: bool = True
+    laserstop_trialend_offramp_ms: int = 500
+    
+    percentage_trials : int = 20
+    def setup(self):
+        super().setup()
+        self.laser_trial_sequence = self.nonconsecutive_trial_sequence(
+            self.percentage_trials,
+            20,50
+            )
+        self.log_notice('Attempting to initialize rodent face-cam')
+        self.rig.initialize_mousecam()
+    
+    @staticmethod
+    def nonconsecutive_trial_sequence(percentage = 25,
+                                      blocks = 20,
+                                      blocksize = 50):
+        perc = percentage/100
+        num_true = round(blocksize * perc)
+        bsize = blocksize - 1
+        true_positions = set()
+        for block in range(blocks):
+            offset = block * blocksize
+            positions = random.sample(range(bsize-num_true + 1), num_true)
+            for i, pos in enumerate(sorted(positions)):
+                true_positions.add(
+                    pos+i+offset
+                    )
+        return [i in true_positions for i in range(blocks*blocksize)]
 
 @dataclass
 class BanditParadigm3(Paradigm):
@@ -991,7 +1105,7 @@ class BanditParadigm3(Paradigm):
                         AltWheelStage2B3,
                         BanditTrainingStageB3,
                         BanditEndStageB3)
-    
+
     def define_progression(self, current_stage, stage_data):
         if current_stage is HabituationStage:
             if stage_data.get('consecutive_good', 0) >= 1:
@@ -1010,4 +1124,3 @@ class BanditParadigm3(Paradigm):
                 self.progress()
         elif current_stage is BanditEndStageB3:
             pass
-    

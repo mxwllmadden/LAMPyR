@@ -133,6 +133,9 @@ class WheelLock(Component):
 
     def to_angle(self, angle):
         self.serial.send_command(f'a{angle}')
+        
+    def stop(self):
+        self.unlock()
 
 
 class LaserControl(Component):
@@ -154,7 +157,7 @@ class Camera(Component):
         self.serial = serialinterface
         self.cam = camerainterface
 
-    def start(self):
+    def begin(self):
         self.serial.send_command('o')
 
     def stop(self):
@@ -182,6 +185,7 @@ class BanditRig(AbstractHardwareRig):
         self.register_component('play', Speaker(serialinterface))
         self.register_component('reward', Sipper(serialinterface))
         self.register_component('wheellock', WheelLock(serialinterface))
+        self.register_component('laser', LaserControl(serialinterface))
 
     def initialize_mousecam(self):
         try:
@@ -197,7 +201,11 @@ class BanditRig(AbstractHardwareRig):
         camerainterface.ready.wait(timeout = 2)
         # This is not advisable as general practice but this hack allows
         # The same rig to run camera and non-camera sessions wihout reconfig
-        self.register_component('camera', camerainterface)
+        
+        serialinterface = self.interfaces['HudaHub']
+        cam = Camera(serialinterface, camerainterface)
+        self.register_component('camera', cam)
+        self.camera.begin()
 
     def is_calibrated(self):
         pass
