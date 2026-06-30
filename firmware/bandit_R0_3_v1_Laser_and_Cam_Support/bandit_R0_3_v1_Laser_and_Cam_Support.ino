@@ -31,7 +31,7 @@
 #define LICK_PERIOD_MS      10
 #define ROTARY_PERIOD_MS    20
 #define CAM_PULSE_PERIOD_MS 50
-#define CAM_PULSE_WIDTH_US  100
+#define CAM_PULSE_WIDTH_US  5000
 
 // -----------------------------------------------------------------------------
 // Hardware

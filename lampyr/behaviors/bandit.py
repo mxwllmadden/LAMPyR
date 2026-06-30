@@ -1079,6 +1079,8 @@ class EXPeriment_LaserInhibitionRandom20(BanditTask):
             )
         self.log_notice('Attempting to initialize rodent face-cam')
         self.rig.initialize_mousecam()
+        self.log_notice('Allowing 6 seconds for autoexposure calibration...')
+        time.sleep(6)
     
     @staticmethod
     def nonconsecutive_trial_sequence(percentage = 25,
