@@ -6,6 +6,7 @@ Created on Tue Jun 23 12:52:15 2026
 """
 
 from lampyr.rigs.abstract import AbstractInterface, InterfaceData
+import numpy as np
 import threading
 import time
 
@@ -143,7 +144,8 @@ class CameraInterface_Arducam(AbstractInterface):
               check_cooldown_ms = 10,
               height = 480,
               width = 640,
-              data_type = 'face_cam'
+              data_type = 'face_cam',
+              threshold_RMS = 2.0
               ):
         #settings
         self.camera_index = camera_index
@@ -160,6 +162,7 @@ class CameraInterface_Arducam(AbstractInterface):
         self.height = height
         self.width = width
         self.data_type = data_type
+        self.threshold_RMS = 2.0
         
         self.data = InterfaceData(report_values = ['unix_time','frame_num'],
                                   report_types = ['cam_frame_times'])
@@ -177,7 +180,8 @@ class CameraInterface_Arducam(AbstractInterface):
     
     def start(self):
         import cv2
-        self.cap = cv2.VideoCapture(self.camera_index)
+        cv2.setLogLevel(2) #Suppressing warning when camera idle
+        self.cap = cv2.VideoCapture(self.camera_index, cv2.CAP_MSMF)
         if not self.cap.isOpened():
             self.cap.release()
             raise RuntimeError("Could not open Camera.")
@@ -203,25 +207,36 @@ class CameraInterface_Arducam(AbstractInterface):
     def _listen(self):
         import cv2
         self.ready.set()
+        last_accepted_frame = None
         while not self.abort_flag:
             ret, frame = self.cap.read()
-            if ret and frame is not None:
-                readtime = time.time()
-                #Force Greyscale
-                if len(frame.shape) == 3:
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                # Force correct size for VideoWriter if driver returns a different shape.
-                if frame.shape[1] != self.width or frame.shape[0] != self.height:
-                    frame = cv2.resize(frame, (self.width, self.height))
-                
-
-                self.out.write(frame)
-                self.data.log_report('cam_frame_times', 
-                                     unix_time = readtime,
-                                     frame_num = self.idx)
-                self.idx+=1
-            else:
+            if not ret or frame is None:
                 time.sleep(self.check_cooldown_ms/1000)
+                continue
+            
+            readtime = time.time()
+            #Force Greyscale
+            if len(frame.shape) == 3:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            # Force correct size for VideoWriter if driver returns a different shape.
+            if frame.shape[1] != self.width or frame.shape[0] != self.height:
+                frame = cv2.resize(frame, (self.width, self.height))
+            
+            # Filter frame out if not reached RMS threshold
+            if last_accepted_frame is not None:
+                diff = frame.astype(np.float32) - last_accepted_frame.astype(np.float32)
+                rms = np.sqrt(np.mean(diff * diff))
+    
+                if rms < self.threshold_RMS:
+                    continue
+            
+            last_accepted_frame = frame.copy()
+            self.out.write(frame)
+            self.data.log_report('cam_frame_times', 
+                                 unix_time = readtime,
+                                 frame_num = self.idx)
+            self.idx+=1
+            time.sleep(self.check_cooldown_ms/1000)
     
     def stop(self):
         self.abort_flag = True
@@ -249,6 +264,8 @@ class CameraInterface_Arducam(AbstractInterface):
 if __name__ == '__main__':
     interface = CameraInterface_Arducam()
     interface.start()
+    time.sleep(2)
+    print('gogogo')
     time.sleep(10)
     interface.stop()
     interface.disconnect()
