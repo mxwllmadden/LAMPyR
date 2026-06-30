@@ -1057,6 +1057,7 @@ class BanditEndStageB3(ResponseAbstractStage):
 @dataclass
 class EXPeriment_LaserInhibitionRandom20(BanditTask):
     slug : str = 'EXPeriment_LaserInhibitionRandom20'
+    tags : list = field(default_factory= lambda : ['experiment'])
     rescue_trial_enabled : bool = False
     enable_wheel_lock : bool = True
     
