@@ -229,6 +229,9 @@ class CameraInterface_Arducam(AbstractInterface):
     
                 if rms < self.threshold_RMS:
                     continue
+            # ABOVE IS IMPORTANT WITH MSMF BACKEND!!!!
+            # MSMF will continue to supply duplicate frames even when a new
+            # frame has not been grabbed.
             
             last_accepted_frame = frame.copy()
             self.out.write(frame)
