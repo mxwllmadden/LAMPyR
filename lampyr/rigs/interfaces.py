@@ -141,11 +141,11 @@ class CameraInterface_Arducam(AbstractInterface):
               camera_index = 0,
               tempfiletarget = None,
               playback_framerate = 20,
-              check_cooldown_ms = 10,
+              check_cooldown_ms = 4,
               height = 480,
               width = 640,
               data_type = 'face_cam',
-              threshold_RMS = 2.0
+              threshold_RMS = 0.2
               ):
         #settings
         self.camera_index = camera_index
