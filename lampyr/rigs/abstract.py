@@ -10,7 +10,7 @@ NOT YET IMPLEMENTED
 from abc import ABC, abstractmethod
 from threading import Lock
 from collections import namedtuple
-import os
+import os, time
 
 from typing import List
 
@@ -67,6 +67,7 @@ class AbstractHardwareRig(ABC):
     def stop(self):
         for component in self.components.values():
             component.stop()
+        time.sleep(2)
         for interface in self.interfaces.values():
             interface.stop()
     
