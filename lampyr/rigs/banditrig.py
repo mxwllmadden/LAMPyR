@@ -198,10 +198,10 @@ class BanditRig(AbstractHardwareRig):
         # This will require manually starting the camera interface, as the
         # Rig wide start command has already occurred
         camerainterface.start()
-        camerainterface.ready.wait(timeout = 2)
+        camerainterface.ready.wait(timeout = 5)
         # This is not advisable as general practice but this hack allows
         # The same rig to run camera and non-camera sessions wihout reconfig
-        
+        time.sleep(1)
         serialinterface = self.interfaces['HudaHub']
         cam = Camera(serialinterface, camerainterface)
         self.register_component('camera', cam)

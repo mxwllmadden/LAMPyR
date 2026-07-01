@@ -395,7 +395,7 @@ class Segment(ABC):
             self.log_notice('Stopping data aquisition')
             self.rig.stop()
             self.log_debug('Allowing grace period for rig data to finish accumulating')
-            time.sleep(2)
+            time.sleep(0.5)
             if self.lampyr is None:
                 self.log_warning("Detected no lampyr instance, attempting to fully close rig")
                 self.rig.disconnect()

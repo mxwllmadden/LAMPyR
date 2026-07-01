@@ -210,12 +210,12 @@ class CameraInterface_Arducam(AbstractInterface):
         self.ready.set()
         last_accepted_frame = None
         while not self.abort_flag:
+            readtime = time.time()
             ret, frame = self.cap.read()
             if not ret or frame is None:
                 time.sleep(self.check_cooldown_ms/1000)
                 continue
             
-            readtime = time.time()
             #Force Greyscale
             if len(frame.shape) == 3:
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
