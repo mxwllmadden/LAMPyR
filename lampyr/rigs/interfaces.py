@@ -145,7 +145,7 @@ class CameraInterface_Arducam(AbstractInterface):
               height = 480,
               width = 640,
               data_type = 'face_cam',
-              threshold_RMS = 0.01
+              threshold_RMS = 0.001
               ):
         #settings
         self.camera_index = camera_index
