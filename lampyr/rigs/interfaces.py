@@ -179,8 +179,9 @@ class CameraInterface_Arducam(AbstractInterface):
         self.out = None
     
     def start(self):
+        import os
+        os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
         import cv2
-        cv2.setLogLevel(2) #Suppressing warning when camera idle
         self.cap = cv2.VideoCapture(self.camera_index, cv2.CAP_MSMF)
         if not self.cap.isOpened():
             self.cap.release()

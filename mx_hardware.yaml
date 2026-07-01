@@ -17,4 +17,4 @@ dependencies:
   - pip
   - h5py
   - requests
-  - opencv
+  - opencv>=4.12
