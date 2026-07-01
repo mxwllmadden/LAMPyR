@@ -162,7 +162,7 @@ class CameraInterface_Arducam(AbstractInterface):
         self.height = height
         self.width = width
         self.data_type = data_type
-        self.threshold_RMS = 2.0
+        self.threshold_RMS = threshold_RMS
         
         self.data = InterfaceData(report_values = ['unix_time','frame_num'],
                                   report_types = ['cam_frame_times'])
