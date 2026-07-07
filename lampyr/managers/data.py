@@ -442,6 +442,8 @@ class DataHandler(AbstractManager):
         sessionentry['year'] = dt.year
         sessionentry['month'] = dt.month
         sessionentry['day'] = dt.day
+        sessionentry['rootslug'] = session.segments.get(session.root, {}
+                                                        ).get('slug', 'NA')
         for entry in ["merit", "demerit", "duration", "trial", "rewards",
                       "abstention", "participation"]:
             sessionentry[entry] = getattr(session, entry)
