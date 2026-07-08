@@ -383,4 +383,23 @@ class Trial(BehaviorSegment):
         time.sleep(duration)
         self.log_debug('Stopped waiting')
         
+def TrialToTask(trial_cls):
+    """Return a Task class that runs ``trial_cls`` once per loop."""
+    if not issubclass(trial_cls, Trial):
+        raise TypeError('TrialToTask expects a Trial subclass')
 
+    @dataclass
+    class GeneratedTask(Task):
+        trial_kwargs: dict = field(default_factory=dict)
+
+        def setup(self):
+            pass
+
+        def loop(self):
+            trial = trial_cls(parent=self, **self.trial_kwargs)
+            trial.run()
+
+    GeneratedTask.__name__ = f'{trial_cls.__name__}Task'
+    GeneratedTask.__qualname__ = GeneratedTask.__name__
+    GeneratedTask.__module__ = trial_cls.__module__
+    return GeneratedTask

@@ -10,7 +10,7 @@ import random
 from copy import deepcopy
 from typing import ClassVar, Literal, List, Tuple
 
-from lampyr.segments import Trial, Task, BehaviorSegment
+from lampyr.segments import Trial, Task, BehaviorSegment, TrialToTask
 from lampyr.segments.paradigm import Stage, Paradigm
 from dataclasses import dataclass, field
 
@@ -82,7 +82,7 @@ class RotaryTestTask(Task):
     Task that repeatedly runs :class:`RotaryTest` instances until the
     session stop conditions are met.
     """
-    slug: str = 'RewHab'
+    slug: str = 'RotaryTest'
 
     def setup(self):
         pass
@@ -92,3 +92,15 @@ class RotaryTestTask(Task):
         trial = RotaryTest(parent=self)
         trial.run()
         del trial
+
+@TrialToTask
+@dataclass
+class LaserTest(Trial):
+    slug : str = 'LaserTest'
+    def setup(self):
+        pass
+    
+    def loop(self):
+        
+        self.rig.laser.begin()
+        self.wai
