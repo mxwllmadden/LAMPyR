@@ -100,7 +100,7 @@ class LaserTest(Trial):
     def setup(self):
         pass
     
-    def loop(self):
+    def perform(self):
         self.log_notice('LASER ON')
         self.rig.laser.begin()
         self.wait(20)
