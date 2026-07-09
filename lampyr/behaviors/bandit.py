@@ -1111,7 +1111,7 @@ class BanditParadigm3(Paradigm):
 
     def define_progression(self, current_stage, stage_data):
         if current_stage is HabituationStage:
-            if stage_data.get('consecutive_good', 0) >= 1:
+            if stage_data.get('consecutive_good', 0) >= 2:
                 self.progress()
         elif current_stage is AnyWheelStageB3:
             if stage_data.get('consecutive_good', 0) >= 1:

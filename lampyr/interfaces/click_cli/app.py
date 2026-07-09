@@ -681,7 +681,13 @@ def _start_touch_mouse_bridge():
 
 
 @cli.command()
-def go():
+@click.option(
+    '--notouchoverlay',
+    is_flag=True,
+    default=False,
+    help='Disable the Windows touchscreen click overlay bridge.',
+)
+def go(notouchoverlay):
     """Launch the Lampyr TUI."""
     import sys
     if sys.platform == "win32":
@@ -704,7 +710,8 @@ def go():
             (mode.value | ENABLE_MOUSE_INPUT | ENABLE_EXTENDED) & ~ENABLE_QUICK_EDIT,
         )
         # Touch-to-mouse bridge
-        _start_touch_mouse_bridge()
+        if not notouchoverlay:
+            _start_touch_mouse_bridge()
     from lampyr.interfaces.textual_tui.app import LampyrApp
     LampyrApp().run()
     sys.exit(0)
