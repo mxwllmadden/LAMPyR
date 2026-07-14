@@ -108,13 +108,16 @@ class SessionQuery:
     def session(self, sessionid):
         for mouseid, entry in self._matched_entries():
             if self.colony._sessionid(entry) == sessionid:
-                return self.colony.load_session(
+                session = self.colony.load_session(
                     sessionid,
                     mouseid,
                 )
+                if session is not None:
+                    return session
+                break
     
         raise KeyError(
-            f"Session '{sessionid}' not found in query."
+            f"Session '{sessionid}' not found in query or failed to load."
         )
 
     def where(self, predicate: Callable):
@@ -393,10 +396,14 @@ class SessionQuery:
         ]
 
     def objects(self) -> list:
-        return [
-            self.colony.load_session(self.colony._sessionid(entry), mouseid)
-            for mouseid, entry in self._matched_entries()
-        ]
+        sessions = []
+
+        for mouseid, entry in self._matched_entries():
+            session = self.colony.load_session(self.colony._sessionid(entry), mouseid)
+            if session is not None:
+                sessions.append(session)
+
+        return sessions
 
     def last_ids(self, n: int = 1) -> List[str]:
         sessionids = []
@@ -437,13 +444,13 @@ class SessionQuery:
                 key=self.colony._starttime,
                 reverse=True,
             )
-            sessions.extend(
-                self.colony.load_session(
+            for entry in entries[:n]:
+                session = self.colony.load_session(
                     self.colony._sessionid(entry),
                     mouseid,
                 )
-                for entry in entries[:n]
-            )
+                if session is not None:
+                    sessions.append(session)
 
         return sessions
 
@@ -515,10 +522,29 @@ class SessionQuery:
 
 
 class Colony:
-    def __init__(self, config=None, keep="sessions", verbose: bool = False):
+    def __init__(self,
+                 config=None,
+                 keep="sessions",
+                 verbose: bool = False,
+                 skip_bad_sessions: bool = False):
+        """
+        Parameters
+        ----------
+        config : optional
+            Configuration passed to :class:`lampyr.managers.data.DataHandler`.
+        keep : {None, 'none', 'mice', 'sessions', 'all'}, optional
+            Which loaded objects to cache in memory.
+        verbose : bool, optional
+            Print loading and skip messages.
+        skip_bad_sessions : bool, optional
+            If True, sessions that are missing or fail to load are skipped
+            instead of raising an exception when session objects are requested.
+        """
         self.data = DataHandler(config=config)
         self.keep_mice, self.keep_sessions = self._resolve_keep(keep)
         self.verbose = verbose
+        self.skip_bad_sessions = skip_bad_sessions
+        self.skipped_sessions = []
         self._mouse_cache = {}
         self._session_cache = {}
 
@@ -630,14 +656,36 @@ class Colony:
     def load_session(self, sessionid: str, mouseid: str):
         if not self.keep_sessions:
             self._log(f"Loading session {sessionid} for mouse {mouseid}")
-            return self.data.loadsession(sessionid, mouseid)
+            try:
+                return self.data.loadsession(sessionid, mouseid)
+            except Exception as exc:
+                return self._handle_session_load_error(sessionid, mouseid, exc)
 
         key = (mouseid, sessionid)
         if key not in self._session_cache:
             self._log(f"Loading session {sessionid} for mouse {mouseid}")
-            self._session_cache[key] = self.data.loadsession(sessionid, mouseid)
+            try:
+                self._session_cache[key] = self.data.loadsession(sessionid, mouseid)
+            except Exception as exc:
+                session = self._handle_session_load_error(sessionid, mouseid, exc)
+                if session is None and self.skip_bad_sessions:
+                    self._session_cache[key] = None
+                return session
 
         return self._session_cache[key]
+
+    def _handle_session_load_error(self, sessionid: str, mouseid: str, exc: Exception):
+        """Handle a failed session load, optionally skipping the bad session."""
+        if self.skip_bad_sessions or isinstance(exc, FileExistsError):
+            self.skipped_sessions.append({
+                "mouseid": mouseid,
+                "sessionid": sessionid,
+                "error": exc,
+            })
+            self._log(f"Skipping session {sessionid} for mouse {mouseid}: {exc}")
+            return None
+
+        raise exc
 
     def clear_cache(self, mice: bool = True, sessions: bool = True):
         if mice:

@@ -150,6 +150,7 @@ class BanditTrial(Trial):
     enable_wheel_lock: bool = False
 
     # laser stuff
+    pretrial_laser_enabled: bool = False
     response_laser_enabled: bool = False
     response_laser_delay_s: float = 0.1
 
@@ -185,6 +186,9 @@ class BanditTrial(Trial):
         laser_on = False
 
         self.wait(self.iti1_s)
+        if self.pretrial_laser_enabled:
+            self.trigger_event('laser_onset')
+            laser_on = True
         self.trigger_event('pretrialstart')
         self.log_info('Waiting for pretrial wheel hold...')
         self.wait(self.pt_hold_s)
@@ -315,19 +319,24 @@ class BanditTask(Task):
                                        'Merit', 'RewardedMerit'] = 'Reward'
 
     enable_wheel_lock: bool = False
-
+    
+    #tracking for lasers
     current_response_trial_number: int = 0
+    current_trial_number: int = 0
 
     # lasers
     enable_laser_trials: bool = False
     laser_trial_sequence: list = None
+    laser_trial_sequence_type: Literal['response', 'trial'] = 'response'
     # laser param list
     laser_trial_params = (
+        'pretrial_laser_enabled',
         'response_laser_enabled',
         'response_laser_delay_s',
         'laserstop_trialend_offramp_enabled',
         'laserstop_trialend_offramp_ms')
     # laser onset/offset
+    pretrial_laser_enabled: bool = False
     response_laser_enabled: bool = False
     response_laser_delay_s: float = 0.1
 
@@ -357,8 +366,14 @@ class BanditTask(Task):
         ltparams = {}
         if self.enable_laser_trials:
             if self.laser_trial_sequence is not None:
-                idx = self.current_response_trial_number % len(
-                    self.laser_trial_sequence)
+                if self.laser_trial_sequence_type == 'response':
+                    idx = self.current_response_trial_number % len(
+                        self.laser_trial_sequence)
+                elif self.laser_trial_sequence_type == 'trial':
+                    idx = self.current_trial_number % len(
+                        self.laser_trial_sequence)
+                else:
+                    raise ValueError('laser_trial_sequence_type set to invalid key')
                 if self.laser_trial_sequence[idx]:
                     ltparams = {k: getattr(self, k)
                                 for k in self.laser_trial_params}
@@ -369,6 +384,7 @@ class BanditTask(Task):
                             enable_wheel_lock=self.enable_wheel_lock,
                             **ltparams)
         trial.run()
+        self.current_trial_number += 1
         if trial.response_made():
             self.current_response_trial_number += 1
         if self.taskblocks_enabled:
@@ -1064,6 +1080,7 @@ class EXPeriment_LaserInhibitionRandom20(BanditTask):
     reward_delay_s : float = 0.2
     
     enable_laser_trials: bool = True
+    laser_trial_sequence_type: Literal['response', 'trial'] = 'response'
     response_laser_enabled: bool = True
     laser_trial_sequence: list = None
     response_laser_delay_s: float = 0.1
@@ -1098,6 +1115,19 @@ class EXPeriment_LaserInhibitionRandom20(BanditTask):
                     pos+i+offset
                     )
         return [i in true_positions for i in range(blocks*blocksize)]
+
+@dataclass
+class EXPeriment_LaserInhibitionFullTrial_Random20(EXPeriment_LaserInhibitionRandom20):
+    slug : str = 'EXPeriment_LaserInhibitionFullTrial_Random20'
+    tags : list = field(default_factory= lambda : ['experiment'])
+    
+    response_laser_enabled: bool = False
+    laser_trial_sequence_type: Literal['response', 'trial'] = 'trial'
+    pretrial_laser_enabled: bool = True
+    laserstop_trialend_offramp_enabled:bool = True
+    laserstop_trialend_offramp_ms: int = 500
+    percentage_trials : int = 20
+    
 
 @dataclass
 class BanditParadigm3(Paradigm):
