@@ -138,6 +138,13 @@ class SessionQuery:
             f"sessionids in [{', '.join(sorted(selected_ids))}]",
         )
 
+    def root(self, rootslug: str):
+        """Filter sessions by the root segment slug saved in mouse history."""
+        return self._clone(
+            lambda entry: entry.get("rootslug") == rootslug,
+            f"root == {rootslug}",
+        )
+
     def range(self, key: str, minimum=None, maximum=None):
         if key not in self.RANGE_KEYS:
             raise ValueError(f"Unknown session filter: {key}")
@@ -339,7 +346,8 @@ class SessionQuery:
                 if self.colony._sessionid(entry) is None:
                     continue
 
-                if all(predicate(entry) for predicate in self.predicates):
+                predicate_entry = {**entry, "mouseid": mouseid}
+                if all(predicate(predicate_entry) for predicate in self.predicates):
                     result.append((mouseid, entry))
 
         return result
@@ -391,8 +399,8 @@ class SessionQuery:
 
     def entries(self) -> list:
         return [
-            entry
-            for _, entry in self._matched_entries()
+            {**entry, "mouseid": mouseid}
+            for mouseid, entry in self._matched_entries()
         ]
 
     def objects(self) -> list:
@@ -593,6 +601,7 @@ class Colony:
                  participation=None,
                  starttime=None,
                  date_range=None,
+                 root=None,
                  where=None) -> SessionQuery:
         if mouseid is not None and mouseids is not None:
             raise ValueError("Pass only one of mouseid or mouseids.")
@@ -636,6 +645,9 @@ class Colony:
                 ) from None
 
             query = query.date_range(start, end)
+
+        if root is not None:
+            query = query.root(root)
 
         if sessionids is not None:
             query = query.sessionids(sessionids)
