@@ -224,6 +224,10 @@ class RecordStore:
                 mouseid,
             )
 
+            if session is None:
+                self.cache[key] = []
+                continue
+
             self.get(
                 extractor_name,
                 session,
