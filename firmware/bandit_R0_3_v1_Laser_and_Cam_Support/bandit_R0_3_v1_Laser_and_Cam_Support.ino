@@ -25,6 +25,13 @@
 #define ROTARYPIN2          3
 
 // -----------------------------------------------------------------------------
+// Reporting
+// -----------------------------------------------------------------------------
+
+#define COMMAND_PULSE_PIN    8
+#define COMMAND_PULSE_WIDTH_US 5000   // 5 ms
+
+// -----------------------------------------------------------------------------
 // Task Periods
 // -----------------------------------------------------------------------------
 
@@ -95,6 +102,10 @@ uint32_t loopCounterStart = 0;
 bool pauseAfterReport = false;
 uint32_t pauseStart = 0;
 
+// Reporting
+bool commandPulseActive = false;
+uint32_t commandPulseStart = 0;
+
 
 // -----------------------------------------------------------------------------
 // Camera Pulses
@@ -114,6 +125,13 @@ void triggerCameraPulse()
 // Reporting
 // -----------------------------------------------------------------------------
 
+void triggerCommandPulse()
+{
+    digitalWrite(COMMAND_PULSE_PIN, HIGH);
+    commandPulseActive = true;
+    commandPulseStart = micros();
+}
+
 void reportCamPulse()
 {
     Serial.print(millis());
@@ -125,6 +143,7 @@ void reportCommand(char cmd)
 {
     if (suppressCommandReports)
         return;
+    triggerCommandPulse();
     Serial.print(millis());
     Serial.print("\tC\t");
     Serial.println((int)cmd);
@@ -465,6 +484,9 @@ void setup()
     pinMode(LICKOMETERDIGPIN, INPUT);
     pinMode(LICKOMETERANALOGPIN, INPUT);
 
+    pinMode(COMMAND_PULSE_PIN, OUTPUT);
+    digitalWrite(COMMAND_PULSE_PIN, LOW);
+
     wheelLock.attach(SERVOMOTORPIN);
     wheelLock.write(90);
 
@@ -564,6 +586,17 @@ void loop()
         {
             digitalWrite(CAM_PIN, LOW);
             camPulseActive = false;
+        }
+    }
+    // -------------------------------------------------------------
+    // End Command Pulse
+    // -------------------------------------------------------------
+    if (commandPulseActive)
+    {
+        if ((micros() - commandPulseStart) >= COMMAND_PULSE_WIDTH_US)
+        {
+            digitalWrite(COMMAND_PULSE_PIN, LOW);
+            commandPulseActive = false;
         }
     }
 }
