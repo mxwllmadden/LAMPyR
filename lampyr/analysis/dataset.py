@@ -123,7 +123,7 @@ class MultiSessionDataset:
     """
 
     def __init__(self, fp: str = None, sessions: List[Session] = None,
-                 destructive_overwrite=False):
+                 destructive_overwrite=False, allow_mutation=False):
         """
         Initialise the dataset, loading existing sessions from disk.
 
@@ -140,38 +140,77 @@ class MultiSessionDataset:
         """
         if sessions is None:
             sessions = []
-        # Basic attributes
-        self.sessions = []
-        self.sessionsbyid = {}
+        # Session tracking
+        self._sessions_index_set = set()
+        self._session_isloaded = {}
+        self._session_objects = {}
+        self.allow_mutation = allow_mutation
 
         # File attributes
         self.fp = fp
         if fp is not None:
             os.makedirs(fp, exist_ok=True)
-        self.update()
+        self._update()
 
         if fp is not None:
             if destructive_overwrite:
                 self.clear_files()
             else:
-                self._load()
+                self._load_index()
         self.addsession(sessions)
 
         # Secondary attributes
         self._extractor_objects = {}
-
+    
+    def _load_session(self, sessionid):
+        if sessionid not in self._sessions_index_set:
+            raise ValueError('No such session is registered')
+        if not self.persistent:
+            raise RuntimeError('This is an in-memory only dataset, specify a filepath to load from disk')
+        self._session_objects[sessionid] = files.loadsessionfile(sessionid, self.fp)
+        self._session_isloaded[sessionid] = True
+    
+    def _save_session(self, sessionid):
+        if not self.isloaded(sessionid):
+            print(f'Skipping unloaded session file: {sessionid}')
+            return
+        if not self.persistent:
+            raise RuntimeError('This is an in-memory only dataset, specify a filepath to save to disk')
+        if not self.allow_mutation:
+            raise RuntimeError('Mutation is not enabled')
+        print(f'Saving session file: {sessionid}')
+        files.savesessionfile(self._session_objects[sessionid], self.fp)
+        print(f'Finished saving session file: {sessionid}')
+    
+    def _load_index(self):
+        index_fp = os.path.join(self.fp, 'msd_INDEX.lampyr.json')
+        if os.path.exists(index_fp):
+            self._sessions_index_set.update(files.loadjson(index_fp))
+        
+    def _update(self):
+        for s in self._sessions_index_set:
+            if s not in self._session_isloaded:
+                self._session_isloaded[s] = False
+        for s in list(self._session_isloaded.keys()):
+            if s not in self._sessions_index_set:
+                self._session_isloaded.pop(s)
+        for s in list(self._session_objects.keys()):
+            if s not in self._sessions_index_set:
+                self._session_objects.pop(s)
+        self._extractor_objects = {}
+    
     def clear(self):
-        """Remove all sessions from the in-memory list and update derived attributes."""
-        self.sessions = []
-        self.update()
-
+        self._sessions_index_set = set()
+        self._update()
+    
+    def save(self):
+        if not self.persistent:
+            raise RuntimeError('This is an in-memory only dataset, specify a filepath to save to disk')
+        files.savejson(os.path.join(self.fp, 'msd_INDEX.lampyr.json'), self.sessionids)
+        for sessionid in self.sessionids:
+            self._save_session(sessionid)
+    
     def clear_files(self):
-        """
-        Remove all in-memory sessions and delete all files in the dataset directory.
-
-        Also saves an empty index file after clearing. No-op on disk operations
-        if the dataset is memory-only.
-        """
         self.clear()
         if not self.persistent:
             return
@@ -182,8 +221,8 @@ class MultiSessionDataset:
             elif os.path.isdir(path):
                 shutil.rmtree(path)
         self.save()
-        self.update()
-
+        self._update()
+    
     def addsession(self, session: Union[Session, List[Session]], _suppressupdate = False):
         """
         Add one or more sessions to the dataset, replacing duplicates by ID.
@@ -199,28 +238,53 @@ class MultiSessionDataset:
         if isinstance(session, list):
             for s in session:
                 self.addsession(s, _suppressupdate=True)
-            self.update()
+            self._update()
             return
-        if session.uniquesessionid in self.sessionids:
-            self.sessions = [s for s in self.sessions
-                             if s.uniquesessionid != session.uniquesessionid]
-        self.sessions.append(session)
+        if session.uniquesessionid in self._sessions_index_set:
+            print(f'Skipped {session.uniquesessionid} because it is already in dataset')
+            return
+        self._sessions_index_set.add(session.uniquesessionid)
+        self._session_objects[session.uniquesessionid] = session
+        self._session_isloaded[session.uniquesessionid] = True
         if not _suppressupdate:
-            self.update()
-
-    def update(self):
-        """
-        Rebuild all derived lookup attributes from the current session list.
-
-        Should be called after any modification to :attr:`sessions`.
-        """
-        self.animals = sorted(list(set([s.mouseid for s in self.sessions])))
-        self.sessionids = [s.uniquesessionid for s in self.sessions]
-        self.sessionsbyid = {s.uniquesessionid : s for s in self.sessions}
-        self.animal_sessions = {a: [s for s in self.sessions
+            self._update()
+        
+    @property
+    def session_count(self):
+        return len(self._sessions_index_set)
+    
+    @property
+    def sessions(self):
+        for sessionid in self.sessionids:
+            if not self.isloaded(sessionid):
+                self._load_session(sessionid)
+            yield self._session_objects[sessionid]
+    
+    @property
+    def animal_sessions(self):
+        return {a: [s for s in self.sessions
                                     if s.mouseid == a]
                                 for a in self.animals}
-        self._extractor_objects = {}
+    
+    @property
+    def animals(self):
+        return sorted(list(set([s.mouseid for s in self.sessions])))
+    
+    @property
+    def sessionsbyid(self):
+        return {s.uniquesessionid : s for s in self.sessions}
+    
+    @property
+    def sessionids(self):
+        return sorted(self._sessions_index_set)
+        
+    def isloaded(self, sessionid):
+        return self._session_isloaded[sessionid]
+    
+    @property
+    def persistent(self) -> bool:
+        """True if the dataset has a backing directory on disk."""
+        return self.fp is not None
 
     def search(self,
                *args,
@@ -308,46 +372,3 @@ class MultiSessionDataset:
         else:
             extractor = self._extractor_objects[(reference.session, profile)]
         return extractor(reference.timearray)
-
-    # File management
-
-    @property
-    def persistent(self) -> bool:
-        """True if the dataset has a backing directory on disk."""
-        return self.fp is not None
-
-    def save(self):
-        """
-        Save all sessions to disk and update the index file.
-
-        No-op if the dataset is memory-only (no fp was given).
-        """
-        if not self.persistent:
-            return
-        session_names = [session.uniquesessionid for session in self.sessions]
-        for session in self.sessions:
-            files.savesessionfile(session, self.fp)
-        files.savejson(os.path.join(self.fp,
-                                    'msd_INDEX.lampyr.json'),
-                       session_names)
-
-    def _load(self):
-        """
-        Load all sessions listed in the index file into memory.
-
-        Silently returns if the index file does not exist or the dataset is
-        memory-only.
-        """
-        if not self.persistent:
-            return
-        print('Loading dataset...')
-        try:
-            session_names = files.loadjson(os.path.join(self.fp,
-                                                        'msd_INDEX.lampyr.json'))
-        except FileNotFoundError:
-            return
-        for sname in session_names:
-            print(f'Loading sessionfile {sname}')
-            session = files.loadsessionfile(sname, self.fp)
-            self.addsession(session, _suppressupdate=True)
-        self.update()
