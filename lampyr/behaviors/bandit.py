@@ -223,9 +223,6 @@ class BanditTrial(Trial):
             poll_interval=0.005
         )
         response_time = time.time()
-        if laser_on and self.laserstop_response_offramp_enabled:
-            self.rig.laser.rampdown(self.laserstop_response_offramp_ms)
-            laser_on = False
         if response != 'None':
             if self.enable_wheel_lock:
                 self.rig.wheellock.to_angle(65)
@@ -252,6 +249,9 @@ class BanditTrial(Trial):
         rand = random.random()
         self.log_debug(f'RAND:{rand},THRESH:{probability}')
         self.log_debug(f'Reward delay: {self.reward_delay_s}')
+        if laser_on and self.laserstop_response_offramp_enabled:
+            self.rig.laser.rampdown(self.laserstop_response_offramp_ms)
+            laser_on = False
         if self.response_laser_enabled and response != 'None':
             self.wait(self.response_laser_delay_s)
             self.trigger_event('laser_onset')
