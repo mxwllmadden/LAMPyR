@@ -138,6 +138,7 @@ class BanditTrial(Trial):
     iti1_s: float = 1
     pt_hold_s: float = 2
     pt_mvmt_threshold_deg: float = 5
+    pt_trial_delay: float = 0
     responsewindow_s: float = 3
     responsethresholds_deg: dict = field(default_factory=lambda: {'Left': 15,
                                                                   'Right': 15})
@@ -151,9 +152,13 @@ class BanditTrial(Trial):
 
     # laser stuff
     pretrial_laser_enabled: bool = False
+    precue_laser_enabled: bool = False
+    precue_laser_offset: float = 0.5
     response_laser_enabled: bool = False
     response_laser_delay_s: float = 0.1
-
+    
+    laserstop_response_offramp_enabled: bool = False
+    laserstop_response_offramp_ms: int = 200
     laserstop_trialend_offramp_enabled: bool = False
     laserstop_trialend_offramp_ms: int = 500
 
@@ -201,6 +206,13 @@ class BanditTrial(Trial):
                 'Animal movement detected. Waiting for cessation.'),
             while_waiting_interval=4
         )
+        if self.precue_laser_enabled:
+            self.wait(max(self.pt_trial_delay - self.precue_laser_offset,0))
+            self.trigger_event('laser_onset')
+            laser_on = True
+            self.wait(self.precue_laser_offset)
+        else:
+            self.wait(self.pt_trial_delay)
         self.log_info('Trial start')
         tstart_time = self.trigger_event('trialstart')
         self.rig.wheel.home()
@@ -211,6 +223,9 @@ class BanditTrial(Trial):
             poll_interval=0.005
         )
         response_time = time.time()
+        if laser_on and self.laserstop_response_offramp_enabled:
+            self.rig.laser.rampdown(self.laserstop_response_offramp_ms)
+            laser_on = False
         if response != 'None':
             if self.enable_wheel_lock:
                 self.rig.wheellock.to_angle(65)
@@ -265,6 +280,7 @@ class BanditTrial(Trial):
         if self.laserstop_trialend_offramp_enabled and laser_on:
             self.log_info('Laser ramping down')
             self.rig.laser.rampdown(self.laserstop_trialend_offramp_ms)
+            laser_on = False
 
     def response_loop(self):
         wheel_pos = self.rig.wheel.angle()
@@ -306,6 +322,8 @@ class BanditTask(Task):
     target_mode: Literal['Random', 'Any', 'Left', 'Right'] = 'Random'
     reward_prob_target: int = 80
     reward_prob_offtarget: int = 0
+    iti1_s: float = 1
+    pt_trial_delay: float = 0
     reward_delay_s: float = 0
 
     rescue_trial_enabled: bool = False
@@ -334,14 +352,22 @@ class BanditTask(Task):
         'response_laser_enabled',
         'response_laser_delay_s',
         'laserstop_trialend_offramp_enabled',
-        'laserstop_trialend_offramp_ms')
+        'laserstop_trialend_offramp_ms',
+        'precue_laser_enabled',
+        'precue_laser_offset',
+        'laserstop_response_offramp_enabled',
+        'laserstop_response_offramp_ms')
     # laser onset/offset
     pretrial_laser_enabled: bool = False
+    precue_laser_enabled: bool = False
+    precue_laser_offset: float = 0.5
     response_laser_enabled: bool = False
     response_laser_delay_s: float = 0.1
 
     laserstop_trialend_offramp_enabled: bool = False
     laserstop_trialend_offramp_ms: int = 500
+    laserstop_response_offramp_enabled: bool = False
+    laserstop_response_offramp_ms: int = 200
 
     def setup(self):
         if self.target_mode == 'Random':
@@ -379,6 +405,8 @@ class BanditTask(Task):
                                 for k in self.laser_trial_params}
 
         trial = BanditTrial(parent=self,
+                            iti1_s = self.iti1_s,
+                            pt_trial_delay = self.pt_trial_delay,
                             reward_delay_s=self.reward_delay_s,
                             rewardprobs_perc=self._reward_probs[self._target],
                             enable_wheel_lock=self.enable_wheel_lock,
@@ -1127,6 +1155,24 @@ class EXPeriment_LaserInhibitionFullTrial_Random20(EXPeriment_LaserInhibitionRan
     laserstop_trialend_offramp_enabled:bool = True
     laserstop_trialend_offramp_ms: int = 500
     percentage_trials : int = 20
+
+@dataclass
+class EXPeriment_LaserInhibitionCueResponse_Random25(EXPeriment_LaserInhibitionRandom20):
+     slug : str = 'EXPeriment_LaserInhibitionCueResponse_Random25'
+     tags : list = field(default_factory= lambda : ['experiment'])
+     
+     response_laser_enabled: bool = False
+     laserstop_trialend_offramp_enabled:bool = False
+     laser_trial_sequence_type: Literal['response', 'trial'] = 'trial'
+     
+     precue_laser_enabled: bool = True
+     precue_laser_offset: float = 0.5
+     pt_trial_delay:float = 0.5
+     iti1_s: float = 0.5
+     laserstop_response_offramp_enabled: bool = True
+     laserstop_response_offramp_ms: int = 200
+     
+     percentage_trials : int = 25
 
 @dataclass
 class EXPeriment_BanditForPhotom(BanditTask):
