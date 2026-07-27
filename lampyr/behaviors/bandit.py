@@ -1172,7 +1172,7 @@ class EXPeriment_LaserInhibitionCueResponse_Random25(EXPeriment_LaserInhibitionR
      laserstop_response_offramp_enabled: bool = True
      laserstop_response_offramp_ms: int = 200
      
-     percentage_trials : int = 25
+     percentage_trials : int = 33
 
 @dataclass
 class EXPeriment_BanditForPhotom(BanditTask):
