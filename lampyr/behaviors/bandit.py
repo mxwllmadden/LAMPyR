@@ -1166,9 +1166,9 @@ class EXPeriment_LaserInhibitionCueResponse_Random25(EXPeriment_LaserInhibitionR
      laser_trial_sequence_type: Literal['response', 'trial'] = 'trial'
      
      precue_laser_enabled: bool = True
-     precue_laser_offset: float = 0.5
-     pt_trial_delay:float = 0.5
-     iti1_s: float = 0.5
+     precue_laser_offset: float = 0.3
+     pt_trial_delay:float = 0.3
+     iti1_s: float = 0.7
      laserstop_response_offramp_enabled: bool = True
      laserstop_response_offramp_ms: int = 200
      
