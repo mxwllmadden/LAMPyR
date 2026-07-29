@@ -250,9 +250,11 @@ class BanditTrial(Trial):
         self.log_debug(f'RAND:{rand},THRESH:{probability}')
         self.log_debug(f'Reward delay: {self.reward_delay_s}')
         if laser_on and self.laserstop_response_offramp_enabled:
+            self.wait(self.response_laser_delay_s)
             self.rig.laser.rampdown(self.laserstop_response_offramp_ms)
             laser_on = False
-        if self.response_laser_enabled and response != 'None':
+            self.wait(self.reward_delay_s - self.response_laser_delay_s)
+        elif self.response_laser_enabled and response != 'None':
             self.wait(self.response_laser_delay_s)
             self.trigger_event('laser_onset')
             laser_on = True
@@ -1169,8 +1171,9 @@ class EXPeriment_LaserInhibitionCueResponse_Random25(EXPeriment_LaserInhibitionR
      precue_laser_offset: float = 0.3
      pt_trial_delay:float = 0.3
      iti1_s: float = 0.7
+     response_laser_delay_s : float = 0.1
      laserstop_response_offramp_enabled: bool = True
-     laserstop_response_offramp_ms: int = 200
+     laserstop_response_offramp_ms: int = 100
      
      percentage_trials : int = 33
 
@@ -1197,12 +1200,12 @@ class EXPeriment_AltChoiceForPhotom(BanditTask):
     slug : str = 'EXPeriment_BanditForPhotom'
     tags : list = field(default_factory= lambda : ['experiment'])
     
-    reward_prob_target=100,
-    reward_prob_offtarget=0,
-    rescue_trial_enabled=False,
-    taskblocks_enabled=True,
-    reward_delay_s=0.2,
-    enable_wheel_lock=True
+    reward_prob_target : int=100,
+    reward_prob_offtarget : int=0,
+    rescue_trial_enabled : bool=False,
+    taskblocks_enabled: bool=True,
+    reward_delay_s: float=0.2,
+    enable_wheel_lock: bool=True
     
     reward_delay_s : float = 0.2
     
