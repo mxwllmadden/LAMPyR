@@ -1178,6 +1178,17 @@ class EXPeriment_LaserInhibitionCueResponse_Random25(EXPeriment_LaserInhibitionR
      percentage_trials : int = 33
 
 @dataclass
+class EXPeriment_ControlSession(BanditTask):
+    slug : str = 'EXPeriment_ControlSession'
+    tags : list = field(default_factory= lambda : ['experiment'])
+    rescue_trial_enabled : bool = False
+    enable_wheel_lock : bool = True
+    
+    reward_delay_s : float = 0.2
+    
+    enable_laser_trials: bool = False
+
+@dataclass
 class EXPeriment_BanditForPhotom(BanditTask):
     slug : str = 'EXPeriment_BanditForPhotom'
     tags : list = field(default_factory= lambda : ['experiment'])
