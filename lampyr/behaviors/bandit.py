@@ -1195,6 +1195,22 @@ class EXPeriment_LaserControlSession(BanditTask):
         time.sleep(6)
 
 @dataclass
+class EXPeriment_LaserControlSessionNOCAMERA(BanditTask):
+    slug : str = 'EXPeriment_LaserControlSessionNOCAMERA'
+    tags : list = field(default_factory= lambda : ['experiment'])
+    rescue_trial_enabled : bool = False
+    enable_wheel_lock : bool = True
+    
+    reward_delay_s : float = 0.2
+    
+    enable_laser_trials: bool = False
+    def setup(self):
+        super().setup()
+        self.log_notice('Skipping rodent face-cam')
+        time.sleep(6)
+        
+
+@dataclass
 class EXPeriment_BanditForPhotom(BanditTask):
     slug : str = 'EXPeriment_BanditForPhotom'
     tags : list = field(default_factory= lambda : ['experiment'])
