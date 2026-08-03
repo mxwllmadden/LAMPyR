@@ -13,6 +13,13 @@ LAMPyR is a Python framework for running and managing behavioral experiment rigs
 - Hardware build files in `hardware/`
 - Arduino firmware sketches for Bandit rig variants in `firmware/`
 
+## Documentation
+
+- [CLI command reference](docs/cli_commands.md)
+- [GUI workflow](docs/gui_workflow.md)
+- [Application architecture and segment inheritance](docs/app_architecture_and_segments.md)
+- [Training management](docs/training_management.md)
+
 ## Requirements
 
 - Windows is recommended for hardware/TUI operation; some rig and touch-overlay features are Windows-specific.
