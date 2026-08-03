@@ -195,7 +195,7 @@ Hardware files for building LAMPyR rigs are in `hardware/`:
 
 Arduino sketches for supported rig variants are in `firmware/`. Flash the sketch matching your rig hardware before attempting to run sessions.
 
-## Project layout
+## Project layoutsdfsdf
 
 ```text
 LAMPyR/                 Python package
