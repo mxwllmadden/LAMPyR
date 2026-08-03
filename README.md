@@ -10,6 +10,7 @@ LAMPyR is a Python framework for running and managing behavioral experiment rigs
 - Mouse creation, retirement, paradigm assignment, and run history
 - Session and mouse data persistence using JSON/HDF5-backed utilities
 - Optional Pushover notifications
+- Hardware build files in `hardware/`
 - Arduino firmware sketches for Bandit rig variants in `firmware/`
 
 ## Requirements
@@ -181,6 +182,15 @@ LAMPyR user list
 LAMPyR user ping --user USERNAME --message "LAMPyR notification test"
 ```
 
+## Hardware build files
+
+Hardware files for building LAMPyR rigs are in `hardware/`:
+
+- `hardware/BOM_Hardware.xlsx` - hardware bill of materials.
+- `hardware/3d models/` - printable 3D model files.
+- `hardware/Custom PCB shield/` - PCB shield fabrication files, BOM, designators, and pick-and-place positions.
+- `hardware/eMachineShop design files/` - eMachineShop design files for machined components.
+
 ## Firmware
 
 Arduino sketches for supported rig variants are in `firmware/`. Flash the sketch matching your rig hardware before attempting to run sessions.
@@ -194,6 +204,7 @@ LAMPyR/managers/        Data, rig, mouse, plugin, and notification managers
 LAMPyR/segments/        Segment, task, trial, stage, and paradigm abstractions
 LAMPyR/behaviors/       Behavior implementations
 LAMPyR/analysis/        Data analysis helpers
+hardware/               Hardware BOM, 3D models, PCB shield files, and machining files
 firmware/               Arduino firmware sketches
 mx_hardware.yaml        Conda environment definition
 ```
