@@ -163,6 +163,7 @@ class Config(ConfigFile):
         'lampyr': {
             'configured': False,
             'mice_directory': 'N:/SHARED/Maxwell_Lampyr_MouseData',
+            'plugin_folder': None,
             'enable_saveload_failsafe': True,
             'enable_local_mouse_backups' : True
         },

@@ -16,7 +16,7 @@ from lampyr.primatives import Session
 from lampyr.segments.abstract import Segment
 from lampyr.managers import DataHandler, MouseManager, RigManager
 from lampyr.managers.notification import NotificationManager
-
+from lampyr.managers.plugins import PluginManager
 
 class Lampyr:
     """
@@ -64,6 +64,10 @@ class Lampyr:
         self._input_func = _input_func
         self.config = Config()
         self.session = None
+        if self.config.get('lampyr.configured') is False:
+            return
+        
+        self.pluginmanager = PluginManager(self)
         self.datamanager = DataHandler(self)
         
         self.rigmanager = RigManager(self)
@@ -76,12 +80,16 @@ class Lampyr:
     @property
     def rig(self):
         """The connected rig object, or ``None`` if not yet connected."""
-        return self.rigmanager.rig
+        if hasattr(self, 'rigmanager'):
+            return self.rigmanager.rig
+        return None
 
     @property
     def mouse(self):
         """The currently active :class:`~lampyr.primatives.Mouse` object."""
-        return self.mousemanager.mouse
+        if hasattr(self, 'mousemanager'):
+            return self.mousemanager.mouse
+        return None
 
     def run(self, segment_name: str, **kwargs):
         """

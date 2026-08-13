@@ -61,7 +61,7 @@ class Mouse:
         completed session.
     """
     mouseid: str = '014-000'
-    retired : bool = False
+    retired: bool = False
     mouse_behav_param_overrides: dict = field(default_factory=dict)
     paradigm: str = None
     properties: dict = field(default_factory=dict)
@@ -138,9 +138,9 @@ class Session:
     reward_limit: int = None
     reward_min: int = None
     rewards: int = 0
-    reward_amount_limit : float = None
-    reward_amount_min : float = None
-    reward_amount : float = 0.0
+    reward_amount_limit: float = None
+    reward_amount_min: float = None
+    reward_amount: float = 0.0
     abstention_limit: int = None
     abstention_min: int = None
     abstention: int = 0
@@ -168,9 +168,9 @@ class Session:
     # Session Events and rig data
     eventlist: List = field(default_factory=list)
     rigdata: dict = None
-    rigproperties : dict = None
-    extendeddata : list = None #populated on shutdown
-    _extendeddata : list = None
+    rigproperties: dict = None
+    extendeddata: list = None  # populated on shutdown
+    _extendeddata: list = None
 
     def __setattr__(self, key, value):
         """
@@ -231,7 +231,7 @@ class Session:
         ]
         msg = ''
         for name, min_val, max_val, val in fields:
-            msg += f"{name:22}: {str(val):4} (Min: {str(min_val):6} Max: {str(max_val):6})\n"
+            msg += f"{name:22}: {str(val):4} (Min: {str(min_val)                                                    :6} Max: {str(max_val):6})\n"
         msg += f"{'starttime':22}: {self.starttime}\n"
         msg += f"{'endtime':22}: {self.endtime}\n"
         msg += f"{'uniquesessionid':22}: {self.uniquesessionid}\n"
@@ -245,7 +245,7 @@ class Session:
                custom_checks_permissive=None,
                custom_checks_strict=None,
                sort=None, return_objects=False,
-               filt = None,
+               filt=None,
                _seglist=None):
         """
         Recursively search the segment tree for segments matching given criteria.
@@ -339,11 +339,11 @@ class Session:
         if valid:
             _seglist.append(root)
         for subseg in segment['subdata']:
-            self.search(root = subseg,
-                        type = type,
-                        types = types,
-                        slug = slug,
-                        slugs = slugs,
+            self.search(root=subseg,
+                        type=type,
+                        types=types,
+                        slug=slug,
+                        slugs=slugs,
                         custom_checks_permissive=custom_checks_permissive,
                         custom_checks_strict=custom_checks_strict,
                         _seglist=_seglist)
