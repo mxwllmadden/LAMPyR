@@ -23,6 +23,7 @@ LAMPyR is a Python framework for running and managing behavioral experiment rigs
 ## Requirements
 
 - Windows is recommended for hardware/TUI operation; some rig and touch-overlay features are Windows-specific.
+- Linux is supported for CLI operation with a Linux compatible TUI planned soon.
 - Conda or Miniforge/Miniconda
 - Python 3.10 or newer; the provided Conda environment uses Python 3.12
 - Git, if installing directly from GitHub
