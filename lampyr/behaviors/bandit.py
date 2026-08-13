@@ -1176,6 +1176,25 @@ class EXPeriment_LaserInhibitionCueResponse_Random25(EXPeriment_LaserInhibitionR
      laserstop_response_offramp_ms: int = 100
      
      percentage_trials : int = 33
+     
+@dataclass
+class EXPeriment_LASERCUE_ZERO(EXPeriment_LaserInhibitionRandom20):
+     slug : str = 'EXPeriment_LASERCUE_ZERO'
+     tags : list = field(default_factory= lambda : ['experiment'])
+     
+     response_laser_enabled: bool = False
+     laserstop_trialend_offramp_enabled:bool = False
+     laser_trial_sequence_type: Literal['response', 'trial'] = 'trial'
+     
+     precue_laser_enabled: bool = True
+     precue_laser_offset: float = 0
+     pt_trial_delay:float = 0
+     iti1_s: float = 1
+     response_laser_delay_s : float = 0.1
+     laserstop_response_offramp_enabled: bool = True
+     laserstop_response_offramp_ms: int = 100
+     
+     percentage_trials : int = 33
 
 @dataclass
 class EXPeriment_LaserControlSession(BanditTask):
