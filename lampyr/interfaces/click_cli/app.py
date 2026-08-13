@@ -21,9 +21,38 @@ from lampyr import actions
 @click.pass_context
 def cli(ctx):
     ctx.obj = Lampyr()
+    if (ctx.obj.config.get('lampyr.configured') is False
+        and ctx.invoked_subcommand != 'configure'):
+        raise click.UsageError('Lampyr is not configured. Run "lampyr configure"')
     @ctx.call_on_close
     def cleanup():
         ctx.obj.close()
+
+@cli.command()
+@click.pass_obj
+def configure(lampyr : Lampyr):
+    actions.printtitle('CONFIGURE LAMPYR')
+    mouse_fp = click.prompt('Session/Mouse Data Path:')
+    sl = click.prompt('Enable save/load failsafe(y/n)?\n') == 'y'
+    mback = click.prompt('Enable local mouse file backup (y/n)?\n') == 'y'
+    if click.prompt('Would you like to enable plugins (y/n)?\n') == 'y':
+        plugin_fp = click.prompt('Plugin Folder Path:')
+    else:
+        plugin_fp = None
+    lampyr.config.set('lampyr.mice_directory', mouse_fp)
+    lampyr.config.set('lampyr.plugin_folder', plugin_fp)
+    lampyr.config.set('lampyr.enable_saveload_failsafe', mouse_fp)
+    lampyr.config.set('lampyr.enable_local_mouse_backups', mouse_fp)
+    lampyr.config.set('lampyr.configured', True)
+    click.echo('You have successfully configured your lampyr software')
+
+def _origin(cls):
+    """Return a short label for where a behaviour class was defined."""
+    mod = cls.__module__
+    if mod.startswith('plugin_'):
+        return f'plugin:{mod.removeprefix("plugin_")}'
+    return 'builtin'
+
 
 @cli.command()
 @click.pass_obj
@@ -31,16 +60,16 @@ def list(lampyr : Lampyr):
     actions.printtitle('LOADED BEHAVIORS')
     actions.printheader('PARADIGMS')
     for behav in Paradigm.get_children():
-        click.echo(behav.__name__)
+        click.echo(f'{behav.__name__:50}  [{_origin(behav)}]')
     actions.printheader('STAGES')
     for behav in Stage.get_children():
-        click.echo(behav.__name__)
+        click.echo(f'{behav.__name__:50}  [{_origin(behav)}]')
     actions.printheader('TASKS')
     for behav in Task.get_children():
-        click.echo(behav.__name__)
+        click.echo(f'{behav.__name__:50}  [{_origin(behav)}]')
     actions.printheader('TRIALS')
     for behav in Trial.get_children():
-        click.echo(behav.__name__)
+        click.echo(f'{behav.__name__:50}  [{_origin(behav)}]')
 
 @cli.command()
 @click.pass_obj
