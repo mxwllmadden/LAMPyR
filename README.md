@@ -4,8 +4,8 @@ LAMPyR is a Python framework for running and managing behavioral experiment rigs
 
 ## Features
 
-- Click-based `LAMPyR` command-line interface
-- Textual TUI launcher (`LAMPyR go`)
+- Click-based `lampyr` command-line interface
+- Textual TUI launcher (`lampyr go`)
 - Rig configuration and calibration helpers
 - Mouse creation, retirement, paradigm assignment, and run history
 - Session and mouse data persistence using JSON/HDF5-backed utilities
@@ -36,16 +36,16 @@ LAMPyR is a Python framework for running and managing behavioral experiment rigs
 From the repository root:
 
 ```bat
-conda env create -f mx_hardware.yaml
-conda activate LAMPyR
+conda env create -f lampyr.yaml
+conda activate lampyr
 pip install .
 ```
 
 Verify the install:
 
 ```bat
-LAMPyR --help
-LAMPyR info
+lampyr --help
+lampyr info
 ```
 
 ### Developer install
@@ -53,18 +53,18 @@ LAMPyR info
 Use an editable install if you plan to modify the source code:
 
 ```bat
-conda env create -f mx_hardware.yaml
-conda activate LAMPyR
+conda env create -f lampyr.yaml
+conda activate lampyr
 pip install -e .
 ```
 
 ### Install directly from GitHub
 
 ```bat
-conda create -n LAMPyR python=3.12 -y
-conda activate LAMPyR
+conda create -n lampyr python=3.12 -y
+conda activate lampyr
 conda install -c conda-forge git -y
-pip install "git+https://github.com/mxwllmadden/LAMPyR.git@main"
+pip install "git+https://github.com/HudaLaboratory/LAMPyR.git@main"
 ```
 
 ### Optional video support
@@ -72,7 +72,7 @@ pip install "git+https://github.com/mxwllmadden/LAMPyR.git@main"
 If you install without the provided Conda environment and need OpenCV/video support:
 
 ```bat
-pip install "LAMPyR[video]"
+pip install "lampyr[video]"
 ```
 
 For a local checkout, use:
@@ -85,9 +85,8 @@ pip install ".[video]"
 
 This repository includes batch files for convenience:
 
-- `LAMPyR_setup.bat` - installs/refreshes a LAMPyR Conda environment from the GitHub `main` branch.
-- `LAMPyR_update.bat` - updates dependencies and reinstalls LAMPyR from GitHub.
-- `install.bat` - local environment/install helper.
+- `lampyr_setup.bat` - installs/refreshes a LAMPyR Conda environment from the GitHub `main` branch.
+- `lampyr_update.bat` - updates dependencies and reinstalls LAMPyR from GitHub.
 
 Review these scripts before running them, especially on machines with existing Conda environments.
 
@@ -96,7 +95,7 @@ Review these scripts before running them, especially on machines with existing C
 LAMPyR stores user configuration under:
 
 ```text
-%LOCALAPPDATA%\LAMPyR\config.json
+%LOCALAPPDATA%\lampyr\config.json
 ```
 
 Default settings include a shared mouse data directory:
@@ -105,61 +104,71 @@ Default settings include a shared mouse data directory:
 N:/SHARED/Maxwell_LAMPyR_MouseData
 ```
 
-Use the CLI to inspect and configure the installation:
+On first run, configure the installation (every other command requires this):
 
 ```bat
-LAMPyR info
-LAMPyR rig info
-LAMPyR rig configure
-LAMPyR rig calibrate
+lampyr configure
+```
+
+Then inspect and configure the installation:
+
+```bat
+lampyr info
+lampyr rig info
+lampyr rig configure
+lampyr rig calibrate
 ```
 
 To reset configuration to defaults:
 
 ```bat
-LAMPyR reset
+lampyr reset
 ```
+
+> Note: `lampyr reset` is currently non-functional (`reset_to_default()` is
+> not yet implemented) and will raise an error.
 
 ## Basic usage
 
 Launch the terminal UI:
 
 ```bat
-LAMPyR go
+lampyr go
 ```
 
 List available behaviors:
 
 ```bat
-LAMPyR list
+lampyr list
 ```
 
 Create and inspect a mouse:
 
 ```bat
-LAMPyR mouse create MOUSE_ID --paradigm Bandit
-LAMPyR mouse info MOUSE_ID
-LAMPyR mouse list
+lampyr mouse create MOUSE_ID
+lampyr mouse info MOUSE_ID
+lampyr mouse list
 ```
 
 Set or inspect a mouse paradigm/stage:
 
 ```bat
-LAMPyR mouse paradigm MOUSE_ID
-LAMPyR mouse paradigm MOUSE_ID PARADIGM_NAME --stage STAGE_NAME
+lampyr mouse paradigm MOUSE_ID
+lampyr mouse paradigm MOUSE_ID BanditParadigm3
+lampyr mouse paradigm MOUSE_ID BanditParadigm3 --stage Stage1AnyWheel
 ```
 
 Run a behavior for a mouse:
 
 ```bat
-LAMPyR mouse run MOUSE_ID
-LAMPyR mouse run MOUSE_ID BEHAVIOR_NAME
+lampyr mouse run MOUSE_ID
+lampyr mouse run MOUSE_ID BEHAVIOR_NAME
 ```
 
 Run a behavior directly:
 
 ```bat
-LAMPyR run BEHAVIOR_NAME
+lampyr run BEHAVIOR_NAME
 ```
 
 Common stop-condition options include:
@@ -175,8 +184,8 @@ Common stop-condition options include:
 Use command help for the full option list:
 
 ```bat
-LAMPyR mouse run --help
-LAMPyR run --help
+lampyr mouse run --help
+lampyr run --help
 ```
 
 ## Notifications
@@ -184,10 +193,10 @@ LAMPyR run --help
 LAMPyR supports Pushover notifications. Configure an app token and users with:
 
 ```bat
-LAMPyR user set-token TOKEN
-LAMPyR user create USERNAME --pushover_user_key USER_KEY
-LAMPyR user list
-LAMPyR user ping --user USERNAME --message "LAMPyR notification test"
+lampyr user set-token TOKEN
+lampyr user create USERNAME --pushover_user_key USER_KEY
+lampyr user list
+lampyr user ping --user USERNAME --message "LAMPyR notification test"
 ```
 
 ## Hardware build files
@@ -206,22 +215,24 @@ Arduino sketches for supported rig variants are in `firmware/`. Flash the sketch
 ## Project layout
 
 ```text
-LAMPyR/                 Python package
-LAMPyR/interfaces/      CLI and Textual TUI entry points
-LAMPyR/managers/        Data, rig, mouse, plugin, and notification managers
-LAMPyR/segments/        Segment, task, trial, stage, and paradigm abstractions
-LAMPyR/behaviors/       Behavior implementations
-LAMPyR/analysis/        Data analysis helpers
+lampyr/                 Python package
+lampyr/interfaces/      CLI (click_cli) and Textual TUI (textual_tui) entry points
+lampyr/managers/        Data, mouse, rig, plugin, and notification managers
+lampyr/rigs/            Hardware rig abstractions and Bandit rig components
+lampyr/segments/        Segment, task, trial, stage, and paradigm abstractions
+lampyr/behaviors/       Behavior implementations
+lampyr/analysis/        Data analysis helpers
+lampyr/main.py, config.py, primatives.py, files.py, actions.py, math.py, version.py   Core runtime modules
 hardware/               Hardware BOM, 3D models, PCB shield files, and machining files
 firmware/               Arduino firmware sketches
-mx_hardware.yaml        Conda environment definition
+lampyr.yaml             Conda environment definition
 ```
 
 ## LLM Assisted Coding Disclosure
 
 Some code in this repository was generated or written with the assistance of an LLM coding agent. ALL code has been tested, read, and verified by Maxwell Madden.
 
-Specifically, LLMs were used to generate the LAMPyR.analysis.colony query based session retreival code and the 'LAMPyR go' GUI. All other code was manually written.
+Specifically, LLMs were used to generate the lampyr.analysis.colony query based session retrieval code and the 'lampyr go' GUI. All other code was manually written.
 
 ## License
 

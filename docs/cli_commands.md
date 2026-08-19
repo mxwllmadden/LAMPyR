@@ -12,6 +12,7 @@ lampyr [OPTIONS] COMMAND [ARGS]...
 
 Top-level commands:
 
+- `lampyr configure`
 - `lampyr info`
 - `lampyr list`
 - `lampyr reset`
@@ -61,6 +62,24 @@ Notes:
 
 ## Top-level commands
 
+### `lampyr configure`
+
+First-run setup. Every other command refuses to run until `lampyr.configured`
+is true, so this must be run once before anything else.
+
+```bat
+lampyr configure
+```
+
+It interactively prompts for:
+
+- The session/mouse data path (`lampyr.mice_directory`).
+- Whether to enable the save/load failsafe (`y`/`n`).
+- Whether to enable local mouse file backups (`y`/`n`).
+- Whether to enable plugins and, if so, the plugin folder path.
+
+On completion it sets `lampyr.configured` to `True`.
+
 ### `lampyr info`
 
 Prints the LAMPyR version banner and the full loaded configuration.
@@ -81,13 +100,15 @@ The CLI imports `lampyr.behaviors.bandit` and `lampyr.behaviors.test`, so classe
 
 ### `lampyr reset`
 
-Resets configuration to defaults after an interactive confirmation prompt.
+Prompts for confirmation (`YES`) before resetting configuration to defaults.
 
 ```bat
 lampyr reset
 ```
 
-You must type exactly `YES` when prompted. Defaults include the shared mice directory and rig defaults from `lampyr/config.py`.
+> **Note:** This command is currently non-functional. It calls
+> `config.reset_to_default()`, which is not yet implemented, so it raises an
+> `AttributeError` after confirmation.
 
 ### `lampyr developer`
 
@@ -187,17 +208,20 @@ Creates a mouse directory and mouse metadata file.
 
 ```bat
 lampyr mouse create 014-003
-lampyr mouse create 014-003 --paradigm BanditParadigm
-lampyr mouse create 014-003 -p BanditParadigm --force
+lampyr mouse create 014-003 --force
 ```
 
 Arguments/options:
 
 - `MOUSEID`: required mouse identifier.
-- `--paradigm`, `-p`: optional behavior/paradigm class name to assign at creation.
 - `--force`: overwrite/update even if an existing mouse is found.
 
-Without `--force`, creation aborts if the mouse already exists. If a paradigm is provided at creation time, the command checks `lampyr.paradigms`; in the current application this dict is empty unless populated by code, so the most reliable workflow is to create the mouse first and then assign the paradigm with `lampyr mouse paradigm`.
+Without `--force`, creation aborts if the mouse already exists.
+
+> **Note:** `--paradigm`/`-p` is accepted but currently has no effect — it
+> checks the `lampyr.paradigms` registry, which is empty unless populated by
+> code. Create the mouse first, then assign the paradigm with
+> `lampyr mouse paradigm`.
 
 ### `lampyr mouse retire MOUSEID`
 
@@ -253,17 +277,19 @@ lampyr mouse paradigm 014-003 BanditParadigm
 Set a paradigm and stage:
 
 ```bat
-lampyr mouse paradigm 014-003 BanditParadigm --stage AnyWheel
-lampyr mouse paradigm 014-003 BanditParadigm -s AnyWheel
+lampyr mouse paradigm 014-003 BanditParadigm3 --stage Stage1AnyWheel
+lampyr mouse paradigm 014-003 BanditParadigm3 -s Stage1AnyWheel
 ```
 
 Set only the current stage for the already-assigned paradigm:
 
 ```bat
-lampyr mouse paradigm 014-003 --stage AltWheel1
+lampyr mouse paradigm 014-003 --stage Stage2Correction
 ```
 
-Stage names are validated against the paradigm class's `stagelist` slugs when available.
+Stage names are the paradigm's stage `slug` values (e.g. `Stage0Hab`,
+`Stage1AnyWheel`, `Stage2Correction`, `Stage3Return`, `Stage5BanditTraining`,
+`Stage6Bandit`) and are validated against the paradigm's `stagelist`.
 
 ### `lampyr mouse run MOUSEID [BEHAVIOR]`
 
@@ -394,10 +420,10 @@ lampyr user remove max
 
 ## Typical CLI workflows
 
-### First-time rig setup
+### First-time setup
 
 ```bat
-lampyr info
+lampyr configure
 lampyr rig configure
 lampyr rig calibrate
 lampyr rig info
@@ -406,8 +432,9 @@ lampyr rig info
 ### Add a mouse and assign training
 
 ```bat
-lampyr mouse create 014-003 --paradigm BanditParadigm
-lampyr mouse paradigm 014-003 --stage Habituation
+lampyr mouse create 014-003
+lampyr mouse paradigm 014-003 BanditParadigm3
+lampyr mouse paradigm 014-003 --stage Stage0Hab
 lampyr mouse info 014-003
 ```
 
