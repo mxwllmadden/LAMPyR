@@ -122,8 +122,9 @@ class Sipper(Component):
 
 
 class WheelLock(Component):
-    def setup(self, serialinterface):
+    def setup(self, serialinterface, handedness = 1):
         self.serial = serialinterface
+        self.handedness = handedness
 
     def lock(self):
         self.serial.send_command('l')
@@ -132,6 +133,8 @@ class WheelLock(Component):
         self.serial.send_command('u')
 
     def to_angle(self, angle):
+        if self.handedness == -1:
+            angle = 180-angle
         self.serial.send_command(f'a{angle}')
         
     def stop(self):
@@ -184,8 +187,11 @@ class BanditRig(AbstractHardwareRig):
         self.register_component('licks', Lick(serialinterface))
         self.register_component('play', Speaker(serialinterface))
         self.register_component('reward', Sipper(serialinterface))
-        self.register_component('wheellock', WheelLock(serialinterface))
+        handedness = self.config.get('rig.handedness', 1) #kluge for wheel lock
+        self.register_component('wheellock', WheelLock(serialinterface, handedness = handedness))
         self.register_component('laser', LaserControl(serialinterface))
+        
+        
 
     def initialize_mousecam(self):
         try:

@@ -174,7 +174,8 @@ class Config(ConfigFile):
             'configuration' : {}, #implicit area for persistant rig data
             'calibrated': 0, #To be removed
             'configured': False, #To be removed
-            'sipper_calib': 10000 #To be removed
+            'sipper_calib': 10000, #To be removed
+            'handedness': 1 #Kludge to enable rig handedness in short term
         },
         'notifications': {}
     }
