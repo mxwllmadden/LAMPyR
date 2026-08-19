@@ -187,7 +187,7 @@ class BanditRig(AbstractHardwareRig):
         self.register_component('licks', Lick(serialinterface))
         self.register_component('play', Speaker(serialinterface))
         self.register_component('reward', Sipper(serialinterface))
-        handedness = self.config.get('rig.handedness', 1) #kluge for wheel lock
+        handedness = self.config.get('rig.handedness') #kluge for wheel lock
         self.register_component('wheellock', WheelLock(serialinterface, handedness = handedness))
         self.register_component('laser', LaserControl(serialinterface))
         
