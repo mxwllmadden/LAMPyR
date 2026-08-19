@@ -79,7 +79,7 @@ class RotaryTest(Trial):
 class SwapHandedness(Task):
     def setup(self):
         handedness = self.lampyr.config.get('rig.handedness')
-        self.log_notice(f'Handedness is now {handedness}')
+        self.log_notice(f'Handedness is now {-handedness}')
         self.log_notice('1 = LEFT, -1 = RIGHT')
         self.lampyr.config.set('rig.handedness', -handedness)
     
