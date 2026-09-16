@@ -80,6 +80,7 @@ class AbstractHardwareRig(ABC):
         accumulated_array_data = {}
         extended_data_files = []
         accumulated_json_data['RIG_TYPE'] = self.__class__.__name__
+        accumulated_json_data['RIG_NAME'] = self.config.get('rig.name')
         for interfacename, interface in self.interfaces.items():
             accumulated_json_data[interfacename] = interface.dump()
             accumulated_json_data[interfacename]['INTERFACE_TYPE'] = \
