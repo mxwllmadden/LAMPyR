@@ -1097,7 +1097,7 @@ class BanditEndStageB3(ResponseAbstractStage):
         task.run()
         del task
 
-    def define_shaping(self, stage_data):
+    def define_shaping(self, stage_data):s
         pass
 
 @dataclass
@@ -1145,37 +1145,6 @@ class EXPeriment_LaserInhibitionRandom20(BanditTask):
                     pos+i+offset
                     )
         return [i in true_positions for i in range(blocks*blocksize)]
-
-@dataclass
-class EXPeriment_LaserInhibitionFullTrial_Random20(EXPeriment_LaserInhibitionRandom20):
-    slug : str = 'EXPeriment_LaserInhibitionFullTrial_Random20'
-    tags : list = field(default_factory= lambda : ['experiment'])
-    
-    response_laser_enabled: bool = False
-    laser_trial_sequence_type: Literal['response', 'trial'] = 'trial'
-    pretrial_laser_enabled: bool = True
-    laserstop_trialend_offramp_enabled:bool = True
-    laserstop_trialend_offramp_ms: int = 500
-    percentage_trials : int = 20
-
-@dataclass
-class EXPeriment_LaserInhibitionCueResponse_Random25(EXPeriment_LaserInhibitionRandom20):
-     slug : str = 'EXPeriment_LaserInhibitionCueResponse_Random25'
-     tags : list = field(default_factory= lambda : ['experiment'])
-     
-     response_laser_enabled: bool = False
-     laserstop_trialend_offramp_enabled:bool = False
-     laser_trial_sequence_type: Literal['response', 'trial'] = 'trial'
-     
-     precue_laser_enabled: bool = True
-     precue_laser_offset: float = 0.3
-     pt_trial_delay:float = 0.3
-     iti1_s: float = 0.7
-     response_laser_delay_s : float = 0.1
-     laserstop_response_offramp_enabled: bool = True
-     laserstop_response_offramp_ms: int = 100
-     
-     percentage_trials : int = 33
      
 @dataclass
 class EXPeriment_LASERCUE_ZERO(EXPeriment_LaserInhibitionRandom20):
@@ -1214,22 +1183,6 @@ class EXPeriment_LaserControlSession(BanditTask):
         time.sleep(6)
 
 @dataclass
-class EXPeriment_LaserControlSessionNOCAMERA(BanditTask):
-    slug : str = 'EXPeriment_LaserControlSessionNOCAMERA'
-    tags : list = field(default_factory= lambda : ['experiment'])
-    rescue_trial_enabled : bool = False
-    enable_wheel_lock : bool = True
-    
-    reward_delay_s : float = 0.2
-    
-    enable_laser_trials: bool = False
-    def setup(self):
-        super().setup()
-        self.log_notice('Skipping rodent face-cam')
-        time.sleep(6)
-        
-
-@dataclass
 class EXPeriment_BanditForPhotom(BanditTask):
     slug : str = 'EXPeriment_BanditForPhotom'
     tags : list = field(default_factory= lambda : ['experiment'])
@@ -1246,30 +1199,6 @@ class EXPeriment_BanditForPhotom(BanditTask):
         self.rig.initialize_mousecam()
         self.log_notice('Allowing 6 seconds for autoexposure calibration...')
         time.sleep(6)
-
-@dataclass
-class EXPeriment_AltChoiceForPhotom(BanditTask):
-    slug : str = 'EXPeriment_BanditForPhotom'
-    tags : list = field(default_factory= lambda : ['experiment'])
-    
-    reward_prob_target : int=100,
-    reward_prob_offtarget : int=0,
-    rescue_trial_enabled : bool=False,
-    taskblocks_enabled: bool=True,
-    reward_delay_s: float=0.2,
-    enable_wheel_lock: bool=True
-    
-    reward_delay_s : float = 0.2
-    
-    enable_laser_trials: bool = False
-    
-    def setup(self):
-        super().setup()
-        self.log_notice('Attempting to initialize rodent face-cam')
-        self.rig.initialize_mousecam()
-        self.log_notice('Allowing 6 seconds for autoexposure calibration...')
-        time.sleep(6)
-    
 
 @dataclass
 class BanditParadigm3(Paradigm):
