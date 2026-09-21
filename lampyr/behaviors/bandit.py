@@ -359,6 +359,7 @@ class BanditTask(Task):
     laser_trial_sequence_type: Literal['response', 'trial'] = 'response'
     # laser param list
     laser_trial_params = (
+        'iti_laser_enabled',
         'pretrial_laser_enabled',
         'response_laser_enabled',
         'response_laser_delay_s',
@@ -367,13 +368,18 @@ class BanditTask(Task):
         'precue_laser_enabled',
         'precue_laser_offset',
         'laserstop_response_offramp_enabled',
-        'laserstop_response_offramp_ms')
+        'laserstop_response_offramp_ms',
+        'laserstop_pretrial_offramp_enabled',
+        'laserstop_pretrial_offramp_ms')
     # laser onset/offset
+    iti_laser_enabled: bool = False
     pretrial_laser_enabled: bool = False
     precue_laser_enabled: bool = False
     precue_laser_offset: float = 0.5
     response_laser_enabled: bool = False
     response_laser_delay_s: float = 0.1
+    laserstop_pretrial_offramp_enabled: bool = False
+    laserstop_pretrial_offramp_ms: int = 200
 
     laserstop_trialend_offramp_enabled: bool = False
     laserstop_trialend_offramp_ms: int = 500
@@ -1165,7 +1171,7 @@ class EXPeriment_ITI_LASER(EXPeriment_LaserInhibitionRandom20):
     laserstop_pretrial_offramp_enabled:bool = True
     laserstop_pretrial_offramp_ms : int = 200
     
-    laser_trial_sequence_type: Literal['response', 'trial'] = 'response'
+    laser_trial_sequence_type: Literal['response', 'trial'] = 'trial'
     response_laser_enabled: bool = False
     laser_trial_sequence: list = None
     response_laser_delay_s: float = 0.1
