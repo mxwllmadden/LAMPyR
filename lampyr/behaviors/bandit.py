@@ -151,12 +151,15 @@ class BanditTrial(Trial):
     enable_wheel_lock: bool = False
 
     # laser stuff
+    iti_laser_enabled: bool = False
     pretrial_laser_enabled: bool = False
     precue_laser_enabled: bool = False
     precue_laser_offset: float = 0.5
     response_laser_enabled: bool = False
     response_laser_delay_s: float = 0.1
     
+    laserstop_pretrial_offramp_enabled: bool = False
+    laserstop_pretrial_offramp_ms: int = 200
     laserstop_response_offramp_enabled: bool = False
     laserstop_response_offramp_ms: int = 200
     laserstop_trialend_offramp_enabled: bool = False
@@ -189,11 +192,17 @@ class BanditTrial(Trial):
 
     def perform(self):
         laser_on = False
-
+        if self.iti_laser_enabled:
+            self.trigger_event('laser_onset')
+            laser_on = True
         self.wait(self.iti1_s)
         if self.pretrial_laser_enabled:
             self.trigger_event('laser_onset')
             laser_on = True
+        elif self.laserstop_pretrial_offramp_enabled and laser_on:
+            self.log_info('Laser ramping down')
+            self.rig.laser.rampdown(self.laserstop_pretrial_offramp_ms)
+            laser_on = False
         self.trigger_event('pretrialstart')
         self.log_info('Waiting for pretrial wheel hold...')
         self.wait(self.pt_hold_s)
@@ -1146,6 +1155,24 @@ class EXPeriment_LaserInhibitionRandom20(BanditTask):
                     )
         return [i in true_positions for i in range(blocks*blocksize)]
 
+@dataclass
+class EXPeriment_ITI_LASER(EXPeriment_LaserInhibitionRandom20):
+    slug : str = 'EXPeriment_ITI_LASER'
+    tags : list = field(default_factory= lambda : ['experiment'])
+
+    enable_laser_trials: bool = True
+    iti_laser_enabled: bool = True
+    laserstop_pretrial_offramp_enabled:bool = True
+    laserstop_pretrial_offramp_ms : int = 200
+    
+    laser_trial_sequence_type: Literal['response', 'trial'] = 'response'
+    response_laser_enabled: bool = False
+    laser_trial_sequence: list = None
+    response_laser_delay_s: float = 0.1
+    laserstop_trialend_offramp_enabled: bool = False
+    laserstop_trialend_offramp_ms: int = 500
+    
+    percentage_trials : int = 33
      
 @dataclass
 class EXPeriment_LASERCUE_ZERO(EXPeriment_LaserInhibitionRandom20):
