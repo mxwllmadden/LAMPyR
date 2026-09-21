@@ -1097,7 +1097,7 @@ class BanditEndStageB3(ResponseAbstractStage):
         task.run()
         del task
 
-    def define_shaping(self, stage_data):s
+    def define_shaping(self, stage_data):
         pass
 
 @dataclass
@@ -1145,6 +1145,7 @@ class EXPeriment_LaserInhibitionRandom20(BanditTask):
                     pos+i+offset
                     )
         return [i in true_positions for i in range(blocks*blocksize)]
+
      
 @dataclass
 class EXPeriment_LASERCUE_ZERO(EXPeriment_LaserInhibitionRandom20):
