@@ -33,8 +33,7 @@ def event_trialstart(self: BehaviorSegment):
 
 def event_response(self: BehaviorSegment):
     """Play the response registration tone and log the event"""
-    self.log_debug('Sending play response tone command to rig')
-    self.rig.play.responsetone()
+    pass
 
 
 def event_laser_onset(self: BehaviorSegment):
@@ -234,6 +233,8 @@ class BanditTrial(Trial):
                     laser_on = True
             if self.rig.wheel.movement_total_since(movement_horizon) > self.pt_mvmt_threshold_deg:
                 pretrial_time_start = time.time()
+                if pretrial_time_cumulative > self.pt_hold_s/2:
+                    self.log_info('Movement detected, resetting pretrial period.')
                 continue
             if pretrial_time_cumulative > self.pt_hold_s:
                 break
