@@ -466,7 +466,7 @@ class BanditTask(Task):
                             reward_delay_s=self.reward_delay_s,
                             rewardprobs_perc=self._reward_probs[self._target],
                             enable_wheel_lock=self.enable_wheel_lock,
-                            pt_hold_s = self.pt_hold_s
+                            pt_hold_s = self.pt_hold_s,
                             **ltparams)
         trial.run()
         self.current_trial_number += 1
