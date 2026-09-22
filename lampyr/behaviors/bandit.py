@@ -158,18 +158,18 @@ class BanditTrial(Trial):
     
     #Laser Parameters
     precue_laser_offset: float = 0.5
-    precue_laser_offramp_ms: int = 200
+    precue_laser_offramp_ms_del: tuple = (200,)
     response_laser_delay_s: float = 0.1
     
     # Laser stops
     laserstop_pretrial_offramp_enabled: bool = False
-    laserstop_pretrial_offramp_ms: int = 200
+    laserstop_pretrial_offramp_ms_del: tuple = (200,)
     laserstop_trialcue_offramp_enabled: bool = False
-    laserstop_trialcue_offramp_ms: int = 200
+    laserstop_trialcue_offramp_ms_del: tuple = (200,)
     laserstop_response_offramp_enabled: bool = False
-    laserstop_response_offramp_ms: int = 200
+    laserstop_response_offramp_ms_del: tuple = (200,)
     laserstop_trialend_offramp_enabled: bool = False
-    laserstop_trialend_offramp_ms: int = 500
+    laserstop_trialend_offramp_ms_del: tuple = (500,)
 
     def setup(self):
         """Register trial events"""
@@ -210,7 +210,7 @@ class BanditTrial(Trial):
         # PRETRIAL LASER LOGIC
         if self.laserstop_pretrial_offramp_enabled and laser_on:
             self.log_info('Laser ramping down')
-            self.rig.laser.rampdown(self.laserstop_pretrial_offramp_ms)
+            self.rig.laser.rampdown(*self.laserstop_pretrial_offramp_ms_del)
             laser_on = False
         if self.pretrial_laser_enabled:
             self.trigger_event('laser_onset')
@@ -227,7 +227,7 @@ class BanditTrial(Trial):
             movement_horizon = time.time()-self.pt_hold_s
             if self.precue_laser_enabled:
                 if laser_on and pretrial_time_cumulative < self.precue_laser_offset:
-                    self.rig.laser.rampdown(self.precue_laser_offramp_ms)
+                    self.rig.laser.rampdown(*self.precue_laser_offramp_ms_del)
                     laser_on = False
                 if not laser_on and pretrial_time_cumulative > self.precue_laser_offset:
                     self.trigger_event('laser_onset')
@@ -241,7 +241,7 @@ class BanditTrial(Trial):
             
         # TRIAL START LASER RAMPDOWN
         if self.laserstop_trialcue_offramp_enabled and laser_on:
-            self.rig.laser.rampdown(self.laserstop_trialcue_offramp_ms)
+            self.rig.laser.rampdown(*self.laserstop_trialcue_offramp_ms_del)
             laser_on = False
             
         # TRIAL START
@@ -287,7 +287,7 @@ class BanditTrial(Trial):
         # RESPONSE TO REWARD DELAY WITH LASER LOGIC IF REQUIRED
         if laser_on and self.laserstop_response_offramp_enabled:
             self.wait(self.response_laser_delay_s)
-            self.rig.laser.rampdown(self.laserstop_response_offramp_ms)
+            self.rig.laser.rampdown(*self.laserstop_response_offramp_ms_del)
             laser_on = False
             self.wait(self.reward_delay_s - self.response_laser_delay_s)
         elif self.response_laser_enabled and response != 'None':
@@ -317,7 +317,7 @@ class BanditTrial(Trial):
         self.log_info('Wheel Unlocked')
         if self.laserstop_trialend_offramp_enabled and laser_on:
             self.log_info('Laser ramping down')
-            self.rig.laser.rampdown(self.laserstop_trialend_offramp_ms)
+            self.rig.laser.rampdown(*self.laserstop_trialend_offramp_ms_del)
             laser_on = False
         if laser_on:
             self.log_warning('LASER HAS REMAINED ON PAST END OF TRIAL')
@@ -393,33 +393,33 @@ class BanditTask(Task):
         'response_laser_enabled',
         'response_laser_delay_s',
         'laserstop_trialend_offramp_enabled',
-        'laserstop_trialend_offramp_ms',
+        'laserstop_trialend_offramp_ms_del',
         'precue_laser_enabled',
         'precue_laser_offset',
-        'precue_laser_offramp_ms',
+        'precue_laser_offramp_ms_del',
         'laserstop_trialcue_offramp_enabled',
-        'laserstop_trialcue_offramp_ms',
+        'laserstop_trialcue_offramp_ms_del',
         'laserstop_response_offramp_enabled',
-        'laserstop_response_offramp_ms',
+        'laserstop_response_offramp_ms_del',
         'laserstop_pretrial_offramp_enabled',
-        'laserstop_pretrial_offramp_ms')
+        'laserstop_pretrial_offramp_ms_del')
     # laser onset/offset
     iti_laser_enabled: bool = False
     pretrial_laser_enabled: bool = False
     precue_laser_enabled: bool = False
     precue_laser_offset: float = 0.5
-    precue_laser_offramp_ms: int = 200
+    precue_laser_offramp_ms_del: tuple = (200,)
     response_laser_enabled: bool = False
     response_laser_delay_s: float = 0.1
     laserstop_pretrial_offramp_enabled: bool = False
-    laserstop_pretrial_offramp_ms: int = 200
+    laserstop_pretrial_offramp_ms_del: tuple = (200,)
     laserstop_trialcue_offramp_enabled: bool = False
-    laserstop_trialcue_offramp_ms: int = 200
+    laserstop_trialcue_offramp_ms_del: tuple = (200,)
 
     laserstop_trialend_offramp_enabled: bool = False
-    laserstop_trialend_offramp_ms: int = 500
+    laserstop_trialend_offramp_ms_del: tuple = (500,)
     laserstop_response_offramp_enabled: bool = False
-    laserstop_response_offramp_ms: int = 200
+    laserstop_response_offramp_ms_del: tuple = (200,)
 
     def setup(self):
         if self.target_mode == 'Random':
@@ -1200,12 +1200,12 @@ class EXPeriment_LASER_PRETRIAL_CUE(AbstractLaserExperiment):
     # approximately 1 s before trial/cue onset.
     precue_laser_enabled: bool = True
     precue_laser_offset: float = 1
-    precue_laser_offramp_ms: int = 200
+    precue_laser_offramp_ms_del: tuple = (200,)
     pt_trial_delay: float = 2
 
     # Ramp down when the cue/trial starts.
     laserstop_trialcue_offramp_enabled: bool = True
-    laserstop_trialcue_offramp_ms: int = 200
+    laserstop_trialcue_offramp_ms_del: tuple = (200,)
 
 
 @dataclass
@@ -1223,7 +1223,7 @@ class EXPeriment_LaserInhibitionRandom20(BanditTask):
     laser_trial_sequence: list = None
     response_laser_delay_s: float = 0.1
     laserstop_trialend_offramp_enabled: bool = True
-    laserstop_trialend_offramp_ms: int = 500
+    laserstop_trialend_offramp_ms_del: tuple = (500,)
     
     percentage_trials : int = 20
     def setup(self):
@@ -1262,14 +1262,14 @@ class EXPeriment_ITI_LASER(EXPeriment_LaserInhibitionRandom20):
     enable_laser_trials: bool = True
     iti_laser_enabled: bool = True
     laserstop_pretrial_offramp_enabled:bool = True
-    laserstop_pretrial_offramp_ms : int = 200
+    laserstop_pretrial_offramp_ms_del : tuple = (200,)
     
     laser_trial_sequence_type: Literal['response', 'trial'] = 'trial'
     response_laser_enabled: bool = False
     laser_trial_sequence: list = None
     response_laser_delay_s: float = 0.1
     laserstop_trialend_offramp_enabled: bool = False
-    laserstop_trialend_offramp_ms: int = 500
+    laserstop_trialend_offramp_ms_del: tuple = (500,)
     
     percentage_trials : int = 33
      
@@ -1288,7 +1288,7 @@ class EXPeriment_LASERCUE_ZERO(EXPeriment_LaserInhibitionRandom20):
      iti1_s: float = 1
      response_laser_delay_s : float = 0.1
      laserstop_response_offramp_enabled: bool = True
-     laserstop_response_offramp_ms: int = 100
+     laserstop_response_offramp_ms_del: tuple = (100,)
      
      percentage_trials : int = 33
 
