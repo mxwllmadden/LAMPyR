@@ -366,6 +366,7 @@ class BanditTask(Task):
     reward_prob_target: int = 80
     reward_prob_offtarget: int = 0
     iti1_s: float = 1
+    pt_hold_s: float = 2
     pt_trial_delay: float = 0
     reward_delay_s: float = 0
 
@@ -379,7 +380,7 @@ class BanditTask(Task):
     taskblocks_blockcounttype: Literal['Reward',
                                        'Merit', 'RewardedMerit'] = 'Reward'
 
-    enable_wheel_lock: bool = False
+    enable_wheel_lock: bool = True
     
     #tracking for lasers
     current_response_trial_number: int = 0
@@ -465,6 +466,7 @@ class BanditTask(Task):
                             reward_delay_s=self.reward_delay_s,
                             rewardprobs_perc=self._reward_probs[self._target],
                             enable_wheel_lock=self.enable_wheel_lock,
+                            pt_hold_s = self.pt_hold_s
                             **ltparams)
         trial.run()
         self.current_trial_number += 1
