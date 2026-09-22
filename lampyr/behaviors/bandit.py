@@ -1205,7 +1205,7 @@ class EXPeriment_LASER_PRETRIAL_CUE(AbstractLaserExperiment):
 
     # Ramp down when the cue/trial starts.
     laserstop_trialcue_offramp_enabled: bool = True
-    laserstop_trialcue_offramp_ms_del: tuple = (200,)
+    laserstop_trialcue_offramp_ms_del: tuple = (200,102)
 
 
 @dataclass
