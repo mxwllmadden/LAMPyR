@@ -154,12 +154,18 @@ class BanditTrial(Trial):
     iti_laser_enabled: bool = False
     pretrial_laser_enabled: bool = False
     precue_laser_enabled: bool = False
-    precue_laser_offset: float = 0.5
     response_laser_enabled: bool = False
+    
+    #Laser Parameters
+    precue_laser_offset: float = 0.5
+    precue_laser_offramp_ms: int = 200
     response_laser_delay_s: float = 0.1
     
+    # Laser stops
     laserstop_pretrial_offramp_enabled: bool = False
     laserstop_pretrial_offramp_ms: int = 200
+    laserstop_trialcue_offramp_enabled: bool = False
+    laserstop_trialcue_offramp_ms: int = 200
     laserstop_response_offramp_enabled: bool = False
     laserstop_response_offramp_ms: int = 200
     laserstop_trialend_offramp_enabled: bool = False
@@ -191,46 +197,65 @@ class BanditTrial(Trial):
             self.log_warning(f'response_laser_delay set to {self.reward_delay_s}')
 
     def perform(self):
-        laser_on = False
-        if self.iti_laser_enabled:
+        laser_on = False # Laser state set to False
+        
+        # ITI LASER
+        if self.iti_laser_enabled: # Laser ITI always occurs at beginning of iti1
             self.trigger_event('laser_onset')
             laser_on = True
+            
+        # WAIT FOR ITI
         self.wait(self.iti1_s)
-        if self.pretrial_laser_enabled:
-            self.trigger_event('laser_onset')
-            laser_on = True
-        elif self.laserstop_pretrial_offramp_enabled and laser_on:
+        
+        # PRETRIAL LASER LOGIC
+        if self.laserstop_pretrial_offramp_enabled and laser_on:
             self.log_info('Laser ramping down')
             self.rig.laser.rampdown(self.laserstop_pretrial_offramp_ms)
             laser_on = False
-        self.trigger_event('pretrialstart')
-        self.log_info('Waiting for pretrial wheel hold...')
-        self.wait(self.pt_hold_s)
-        self.waitfor(
-            condition=lambda: self.rig.wheel.movement_total_since(
-                time.time()-self.pt_hold_s) < self.pt_mvmt_threshold_deg,
-            timeout=None,
-            poll_interval=0.01,
-            while_waiting=lambda: self.log_notice(
-                'Animal movement detected. Waiting for cessation.'),
-            while_waiting_interval=4
-        )
-        if self.precue_laser_enabled:
-            self.wait(max(self.pt_trial_delay - self.precue_laser_offset,0))
+        if self.pretrial_laser_enabled:
             self.trigger_event('laser_onset')
             laser_on = True
-            self.wait(self.precue_laser_offset)
-        else:
-            self.wait(self.pt_trial_delay)
+        
+        # PRETRIAL PERIOD STARTS
+        self.trigger_event('pretrialstart')
+        self.log_info('Waiting for pretrial wheel hold...')
+        
+        # PRETRIAL WAITLOOP
+        pretrial_time_start = time.time()
+        while True:
+            pretrial_time_cumulative = time.time() - pretrial_time_start
+            movement_horizon = time.time()-self.pt_hold_s
+            if self.precue_laser_enabled:
+                if laser_on and pretrial_time_cumulative < self.precue_laser_offset:
+                    self.rig.laser.rampdown(self.precue_laser_offramp_ms)
+                    laser_on = False
+                if not laser_on and pretrial_time_cumulative > self.precue_laser_offset:
+                    self.trigger_event('laser_onset')
+                    laser_on = True
+            if self.rig.wheel.movement_total_since(movement_horizon) > self.pt_mvmt_threshold_deg:
+                pretrial_time_start = time.time()
+                continue
+            if pretrial_time_cumulative > self.pt_trial_delay:
+                break
+            self.wait(0.01)
+            
+        # TRIAL START LASER RAMPDOWN
+        if self.laserstop_trialcue_offramp_enabled and laser_on:
+            self.rig.laser.rampdown(self.laserstop_trialcue_offramp_ms)
+            laser_on = False
+            
+        # TRIAL START
         self.log_info('Trial start')
         tstart_time = self.trigger_event('trialstart')
         self.rig.wheel.home()
+        # RESPONSE LOOP
         response = self.waitfor(
             condition=self.response_loop,
             fallback_value='None',
             timeout=self.responsewindow_s,
             poll_interval=0.005
         )
+        # RESPONSE REGISTERED AND REPORTING
         response_time = time.time()
         if response != 'None':
             if self.enable_wheel_lock:
@@ -258,6 +283,8 @@ class BanditTrial(Trial):
         rand = random.random()
         self.log_debug(f'RAND:{rand},THRESH:{probability}')
         self.log_debug(f'Reward delay: {self.reward_delay_s}')
+        
+        # RESPONSE TO REWARD DELAY WITH LASER LOGIC IF REQUIRED
         if laser_on and self.laserstop_response_offramp_enabled:
             self.wait(self.response_laser_delay_s)
             self.rig.laser.rampdown(self.laserstop_response_offramp_ms)
@@ -292,6 +319,8 @@ class BanditTrial(Trial):
             self.log_info('Laser ramping down')
             self.rig.laser.rampdown(self.laserstop_trialend_offramp_ms)
             laser_on = False
+        if laser_on:
+            self.log_warning('LASER HAS REMAINED ON PAST END OF TRIAL')
 
     def response_loop(self):
         wheel_pos = self.rig.wheel.angle()
@@ -367,6 +396,9 @@ class BanditTask(Task):
         'laserstop_trialend_offramp_ms',
         'precue_laser_enabled',
         'precue_laser_offset',
+        'precue_laser_offramp_ms',
+        'laserstop_trialcue_offramp_enabled',
+        'laserstop_trialcue_offramp_ms',
         'laserstop_response_offramp_enabled',
         'laserstop_response_offramp_ms',
         'laserstop_pretrial_offramp_enabled',
@@ -376,10 +408,13 @@ class BanditTask(Task):
     pretrial_laser_enabled: bool = False
     precue_laser_enabled: bool = False
     precue_laser_offset: float = 0.5
+    precue_laser_offramp_ms: int = 200
     response_laser_enabled: bool = False
     response_laser_delay_s: float = 0.1
     laserstop_pretrial_offramp_enabled: bool = False
     laserstop_pretrial_offramp_ms: int = 200
+    laserstop_trialcue_offramp_enabled: bool = False
+    laserstop_trialcue_offramp_ms: int = 200
 
     laserstop_trialend_offramp_enabled: bool = False
     laserstop_trialend_offramp_ms: int = 500
@@ -1114,6 +1149,64 @@ class BanditEndStageB3(ResponseAbstractStage):
 
     def define_shaping(self, stage_data):
         pass
+
+@dataclass
+class AbstractLaserExperiment(BanditTask):
+    rescue_trial_enabled : bool = False
+    enable_wheel_lock : bool = True
+    reward_delay_s : float = 0.2
+    enable_laser_trials: bool = True
+    laser_trial_sequence_type: Literal['response', 'trial'] = 'trial'
+    laser_trial_sequence: list = None
+    
+    def setup(self):
+        super().setup()
+        self.laser_trial_sequence = self.nonconsecutive_trial_sequence(
+            self.percentage_trials,
+            20,50
+            )
+        self.log_notice('Attempting to initialize rodent face-cam')
+        self.rig.initialize_mousecam()
+        self.log_notice('Allowing 6 seconds for autoexposure calibration...')
+        time.sleep(6)
+    
+    @staticmethod
+    def nonconsecutive_trial_sequence(percentage = 25,
+                                      blocks = 20,
+                                      blocksize = 50):
+        perc = percentage/100
+        num_true = round(blocksize * perc)
+        bsize = blocksize - 1
+        true_positions = set()
+        for block in range(blocks):
+            offset = block * blocksize
+            positions = random.sample(range(bsize-num_true + 1), num_true)
+            for i, pos in enumerate(sorted(positions)):
+                true_positions.add(
+                    pos+i+offset
+                    )
+        return [i in true_positions for i in range(blocks*blocksize)]
+
+@dataclass
+class EXPeriment_LASER_PRETRIAL_CUE(AbstractLaserExperiment):
+    slug : str = 'EXPeriment_LASER_PRETRIAL_CUE'
+    tags : list = field(default_factory= lambda : ['experiment'])
+
+    # Laser trials are selected using the trial number sequence.
+    laser_trial_sequence_type: Literal['response', 'trial'] = 'trial'
+    percentage_trials : int = 33
+
+    # With a 2 s pretrial delay and a 1 s offset, laser onset is
+    # approximately 1 s before trial/cue onset.
+    precue_laser_enabled: bool = True
+    precue_laser_offset: float = 1
+    precue_laser_offramp_ms: int = 200
+    pt_trial_delay: float = 2
+
+    # Ramp down when the cue/trial starts.
+    laserstop_trialcue_offramp_enabled: bool = True
+    laserstop_trialcue_offramp_ms: int = 200
+
 
 @dataclass
 class EXPeriment_LaserInhibitionRandom20(BanditTask):
