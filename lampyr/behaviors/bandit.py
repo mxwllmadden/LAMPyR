@@ -235,9 +235,12 @@ class BanditTrial(Trial):
             if self.rig.wheel.movement_total_since(movement_horizon) > self.pt_mvmt_threshold_deg:
                 pretrial_time_start = time.time()
                 continue
-            if pretrial_time_cumulative > self.pt_trial_delay:
+            if pretrial_time_cumulative > self.pt_hold_s:
                 break
             time.sleep(0.01)
+        
+        if self.pt_trial_delay > 0:
+            self.wait(self.pt_trial_delay)
             
         # TRIAL START LASER RAMPDOWN
         if self.laserstop_trialcue_offramp_enabled and laser_on:
@@ -1201,7 +1204,7 @@ class EXPeriment_LASER_PRETRIAL_CUE(AbstractLaserExperiment):
     precue_laser_enabled: bool = True
     precue_laser_offset: float = 1
     precue_laser_offramp_ms_del: tuple = (200,)
-    pt_trial_delay: float = 2
+    pt_trial_hold: float = 2
 
     # Ramp down when the cue/trial starts.
     laserstop_trialcue_offramp_enabled: bool = True
