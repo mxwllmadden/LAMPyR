@@ -223,20 +223,18 @@ class BanditTrial(Trial):
         pretrial_time_start = time.time()
         while True:
             pretrial_time_cumulative = time.time() - pretrial_time_start
-            movement_horizon = time.time()-self.pt_hold_s
-            if self.precue_laser_enabled:
-                if laser_on and pretrial_time_cumulative < (self.pt_hold_s - self.precue_laser_offset):
+            movement_prelaser = self.rig.wheel.movement_total_since(
+                time.time()-(self.pt_hold_s - self.precue_laser_offset))
+            movement_cumulative = self.rig.wheel.movement_total_since(
+                time.time()-self.pt_hold_s)
+            if self.precue_laser_enabled and pretrial_time_cumulative > (self.pt_hold_s - self.precue_laser_offset):
+                if laser_on and movement_prelaser > self.pt_mvmt_threshold_deg:
                     self.rig.laser.rampdown(*self.precue_laser_offramp_ms_del)
                     laser_on = False
-                if not laser_on and pretrial_time_cumulative > (self.pt_hold_s - self.precue_laser_offset):
+                if not laser_on and movement_prelaser < self.pt_mvmt_threshold_deg:
                     self.trigger_event('laser_onset')
                     laser_on = True
-            if self.rig.wheel.movement_total_since(movement_horizon) > self.pt_mvmt_threshold_deg:
-                pretrial_time_start = time.time()
-                if pretrial_time_cumulative > self.pt_hold_s/2:
-                    self.log_info('Movement detected, resetting pretrial period.')
-                continue
-            if pretrial_time_cumulative > self.pt_hold_s:
+            if movement_cumulative < self.pt_mvmt_threshold_deg and pretrial_time_cumulative >= self.pt_hold_s:
                 break
             time.sleep(0.01)
         
