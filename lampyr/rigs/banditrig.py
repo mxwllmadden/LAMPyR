@@ -151,8 +151,12 @@ class LaserControl(Component):
     def stop(self):
         self.serial.send_command('x')
 
-    def rampdown(self, ramp_ms=500):
-        self.serial.send_command(f'c{ramp_ms}')
+    def rampdown(self, ramp_ms=500, delay_ms=0):
+        """Ramp the laser down, optionally after a delay in milliseconds."""
+        if delay_ms:
+            self.serial.send_command(f'c{ramp_ms},{delay_ms}')
+        else:
+            self.serial.send_command(f'c{ramp_ms}')
 
 
 class Camera(Component):
