@@ -226,10 +226,10 @@ class BanditTrial(Trial):
             pretrial_time_cumulative = time.time() - pretrial_time_start
             movement_horizon = time.time()-self.pt_hold_s
             if self.precue_laser_enabled:
-                if laser_on and pretrial_time_cumulative < self.precue_laser_offset:
+                if laser_on and pretrial_time_cumulative < (self.pt_hold_s - self.precue_laser_offset):
                     self.rig.laser.rampdown(*self.precue_laser_offramp_ms_del)
                     laser_on = False
-                if not laser_on and pretrial_time_cumulative > self.precue_laser_offset:
+                if not laser_on and pretrial_time_cumulative > (self.pt_hold_s - self.precue_laser_offset):
                     self.trigger_event('laser_onset')
                     laser_on = True
             if self.rig.wheel.movement_total_since(movement_horizon) > self.pt_mvmt_threshold_deg:
@@ -1202,9 +1202,9 @@ class EXPeriment_LASER_PRETRIAL_CUE(AbstractLaserExperiment):
     # With a 2 s pretrial delay and a 1 s offset, laser onset is
     # approximately 1 s before trial/cue onset.
     precue_laser_enabled: bool = True
-    precue_laser_offset: float = 1
+    precue_laser_offset: float = 0.5
     precue_laser_offramp_ms_del: tuple = (200,)
-    pt_trial_hold: float = 2
+    pt_hold_s: float = 2
 
     # Ramp down when the cue/trial starts.
     laserstop_trialcue_offramp_enabled: bool = True
@@ -1257,24 +1257,6 @@ class EXPeriment_LaserInhibitionRandom20(BanditTask):
                     )
         return [i in true_positions for i in range(blocks*blocksize)]
 
-@dataclass
-class EXPeriment_ITI_LASER(EXPeriment_LaserInhibitionRandom20):
-    slug : str = 'EXPeriment_ITI_LASER'
-    tags : list = field(default_factory= lambda : ['experiment'])
-
-    enable_laser_trials: bool = True
-    iti_laser_enabled: bool = True
-    laserstop_pretrial_offramp_enabled:bool = True
-    laserstop_pretrial_offramp_ms_del : tuple = (200,)
-    
-    laser_trial_sequence_type: Literal['response', 'trial'] = 'trial'
-    response_laser_enabled: bool = False
-    laser_trial_sequence: list = None
-    response_laser_delay_s: float = 0.1
-    laserstop_trialend_offramp_enabled: bool = False
-    laserstop_trialend_offramp_ms_del: tuple = (500,)
-    
-    percentage_trials : int = 33
      
 @dataclass
 class EXPeriment_LASERCUE_ZERO(EXPeriment_LaserInhibitionRandom20):
