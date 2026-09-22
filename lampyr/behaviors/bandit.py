@@ -237,7 +237,7 @@ class BanditTrial(Trial):
                 continue
             if pretrial_time_cumulative > self.pt_trial_delay:
                 break
-            self.wait(0.01)
+            time.sleep(0.01)
             
         # TRIAL START LASER RAMPDOWN
         if self.laserstop_trialcue_offramp_enabled and laser_on:
