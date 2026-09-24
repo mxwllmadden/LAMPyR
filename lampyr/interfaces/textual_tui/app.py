@@ -526,10 +526,15 @@ class ScheduleTimeScreen(Screen):
             return
 
         config = self.app.lampyr.config
-        config.set("lampyr.automated_task.task", self._task_class_name)
-        config.set("lampyr.automated_task.start_time", self._start_time)
-        config.set("lampyr.automated_task.end_time", self._end_time)
-        config.set("lampyr.automated_task.last_run_window", None)
+        config.set(
+            "lampyr.automated_task",
+            {
+                "task": self._task_class_name,
+                "start_time": self._start_time,
+                "end_time": self._end_time,
+                "last_run_window": None,
+            },
+        )
 
         for screen in reversed(self.app.screen_stack):
             if isinstance(screen, MainScreen):
