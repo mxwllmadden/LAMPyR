@@ -621,6 +621,10 @@ class RunScreen(Screen):
     def on_log(self, event: LogOutput) -> None:
         self.query_one("#run-output", RichLog).write(Text.from_ansi(_shorten_segment_slug(event.text)))
 
+    def _load_mouse(self) -> None:
+        """Load the mouse that will receive this session."""
+        self.app.lampyr.mousemanager.load(self._mouseid)
+
     def _run(self) -> None:
         import traceback as _tb
 
@@ -631,7 +635,7 @@ class RunScreen(Screen):
         error = False
         try:
             out(f"Loading mouse {self._mouseid}...")
-            self.app.lampyr.mousemanager.load(self._mouseid)
+            self._load_mouse()
 
             # Describe rig start failures explicitly — actions.Abort has no message
             out("Checking rig configuration...")
@@ -715,12 +719,38 @@ class RunScreen(Screen):
             if self._animal_timer is not None:
                 self._animal_timer.cancel()
                 self._animal_timer = None
-            for screen in reversed(self.app.screen_stack):
-                if isinstance(screen, MainScreen):
-                    screen.pop_until_active()
-                    break
-            else:
-                self.app.pop_screen()
+            self.app._return_to_main()
+
+
+class ScheduledRunScreen(RunScreen):
+    """Run the configured automated task against the dedicated sentinel mouse."""
+
+    AUTOMOUSE = "AUTOMOUSE"
+
+    def __init__(self, task_class_name: str, session_params: dict = None):
+        super().__init__(
+            self.AUTOMOUSE,
+            task_class_name,
+            session_params=session_params,
+        )
+
+    def _load_mouse(self) -> None:
+        """Create AUTOMOUSE if necessary, then explicitly make it active."""
+        mousemanager = self.app.lampyr.mousemanager
+        if not mousemanager.exists(self.AUTOMOUSE):
+            mousemanager.create(self.AUTOMOUSE)
+        # create() sets the active mouse, but always load explicitly too: a
+        # real mouse loaded before this screen must never receive this session.
+        mousemanager.load(self.AUTOMOUSE)
+
+    @on(RunScreen.RunDone)
+    def on_done(self, event: RunScreen.RunDone) -> None:
+        """Close and return to MainScreen without the manual-run alert timer."""
+        try:
+            self.app.lampyr.close()
+        except Exception:
+            pass
+        self.app._return_to_main()
 
 
 # ---------------------------------------------------------------------------
@@ -846,6 +876,38 @@ class LampyrApp(App):
             self.lampyr.notificationmanager,
         ):
             mgr._output_func = func
+
+    def _return_to_main(self) -> None:
+        """Return to the existing MainScreen and refresh the heartbeat."""
+        for screen in reversed(self.screen_stack):
+            if isinstance(screen, MainScreen):
+                screen.pop_until_active()
+                self._heartbeat()
+                return
+        self.switch_screen(MainScreen())
+        self._heartbeat()
+
+    def start_scheduled_run(self) -> bool:
+        """Start the configured task when a later scheduler stage requests it.
+
+        This is intentionally a callable seam only; heartbeat does not invoke
+        it and no schedule window is evaluated here yet.
+        """
+        task_class_name = self.lampyr.config.get("lampyr.automated_task.task")
+        if not task_class_name:
+            return False
+        if (
+            not isinstance(task_class_name, str)
+            or task_class_name not in self.lampyr.behaviors
+        ):
+            self.notify(
+                f"Scheduled task is not a valid behavior: {task_class_name}",
+                severity="error",
+                timeout=5,
+            )
+            return False
+        self.push_screen(ScheduledRunScreen(task_class_name))
+        return True
 
     def _show_numpad(self, prompt: str) -> None:
         """Push the numpad modal and route its result back to the bridge."""
