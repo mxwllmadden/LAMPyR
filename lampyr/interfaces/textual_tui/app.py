@@ -5,6 +5,7 @@ Launched via: lampyr go
 """
 
 import ctypes
+import inspect
 import re as _re
 import threading
 import time
@@ -288,31 +289,81 @@ class CalibrationScreen(Screen):
 
 
 # ---------------------------------------------------------------------------
-# BehaviorSelectScreen — pick a behavior (ADVANCED flow)
+# BehaviorSelectScreen — pick a behavior for a mouse or an automated task
 # ---------------------------------------------------------------------------
+
+
+def _discover_task_names(behaviors: dict) -> list[str]:
+    """Return registered, concrete ``Task`` names for selection screens."""
+    return [
+        name for name, cls in behaviors.items()
+        if isinstance(cls, type)
+        and issubclass(cls, Task)
+        and cls is not Task
+        and not inspect.isabstract(cls)
+    ]
+
 
 class BehaviorSelectScreen(Screen):
 
-    def __init__(self, mouseid: str):
+    def __init__(
+        self,
+        mouseid: str | None = None,
+        *,
+        scheduling: bool = False,
+        on_task_selected: Callable[[str], None] | None = None,
+    ):
         super().__init__()
-        self._mouseid = mouseid
+        self._mouseid = None if scheduling else mouseid
+        self._scheduling = scheduling
+        self._on_task_selected = on_task_selected
 
     def compose(self) -> ComposeResult:
-        yield Label(
-            f"Select Behavior  ·  Mouse: {self._mouseid}",
-            id="behsel-header",
+        header = (
+            "Select Automated Task to Schedule"
+            if self._scheduling
+            else f"Select Behavior  ·  Mouse: {self._mouseid}"
         )
-        user_behaviors = [
-            name for name, cls in self.app.lampyr.behaviors.items()
-            if issubclass(cls, Task) and cls is not Task
-        ]
+        yield Label(header, id="behsel-header")
+        yield Button("◀  RETURN TO MAIN", id="behsel-return")
+        task_names = _discover_task_names(self.app.lampyr.behaviors)
         with VerticalScroll(id="behavior-list"):
-            for name in user_behaviors:
+            for name in task_names:
                 yield Button(name, classes="behavior-btn")
+            if self._scheduling:
+                yield Button("None", id="behsel-none")
+
+    @on(Button.Pressed, "#behsel-return")
+    def on_return_to_main(self) -> None:
+        for screen in reversed(self.app.screen_stack):
+            if isinstance(screen, MainScreen):
+                screen.pop_until_active()
+                return
+        self.app.switch_screen(MainScreen())
+
+    @on(Button.Pressed, "#behsel-none")
+    def on_clear_automated_task(self) -> None:
+        if not self._scheduling:
+            return
+        self.app.lampyr.config.set("lampyr.automated_task.task", None)
+        self.app.notify("Automated task cleared.", severity="information", timeout=5)
+        self.on_return_to_main()
 
     @on(Button.Pressed, ".behavior-btn")
     def on_behavior(self, event: Button.Pressed) -> None:
         behavior_name = str(event.button.label)
+        if self._scheduling:
+            if self._on_task_selected is not None:
+                self._on_task_selected(behavior_name)
+            else:
+                self.app.notify(
+                    f"Selected automated task: {behavior_name}. "
+                    "Scheduling setup is not available yet.",
+                    severity="information",
+                    timeout=5,
+                )
+                self.app.pop_screen()
+            return
         self.app.push_screen(TaskParamScreen(self._mouseid, behavior_name))
 
 
@@ -536,7 +587,7 @@ class RunScreen(Screen):
 
 
 # ---------------------------------------------------------------------------
-# MainScreen — three large touch buttons
+# MainScreen — large touch buttons
 # ---------------------------------------------------------------------------
 
 class MainScreen(Screen):
@@ -548,6 +599,8 @@ class MainScreen(Screen):
             yield Button("RUN",       id="btn-run",       classes="main-btn")
             yield Button("ADVANCED",  id="btn-advanced",  classes="main-btn")
             yield Button("CALIBRATE", id="btn-calibrate", classes="main-btn")
+            if self.app.lampyr.config.get("lampyr.enable_automated_tasks"):
+                yield Button("AUTOMATED TASK", id="btn-automated-task", classes="main-btn")
             yield Button("✕  QUIT",   id="btn-quit",      classes="main-btn")
 
     # ── RUN ──────────────────────────────────────────────────────────────
@@ -591,6 +644,31 @@ class MainScreen(Screen):
             self.app.notify(f"Mouse not found: {mouseid}", severity="error", timeout=5)
             return
         self.app.push_screen(BehaviorSelectScreen(mouseid))
+
+    # ── AUTOMATED TASK ───────────────────────────────────────────────────
+
+    @on(Button.Pressed, "#btn-automated-task")
+    def on_automated_task(self) -> None:
+        self.app.push_screen(
+            BehaviorSelectScreen(
+                scheduling=True,
+                on_task_selected=self._on_automated_task_selected,
+            )
+        )
+
+    def _on_automated_task_selected(self, behavior_name: str) -> None:
+        """Temporary handoff until the schedule-time screen exists.
+
+        Keep this path side-effect free: selecting a task alone must not write
+        an incomplete schedule to configuration.
+        """
+        self.app.notify(
+            f"Selected automated task: {behavior_name}. "
+            "Scheduling setup is not available yet.",
+            severity="information",
+            timeout=5,
+        )
+        self.app.pop_screen()
 
     # ── CALIBRATE ────────────────────────────────────────────────────────
 

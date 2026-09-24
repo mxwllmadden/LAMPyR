@@ -227,11 +227,18 @@ MainScreen {
 #btn-calibrate {
     background: yellow;
     color: black;
+    min-height: 3;
+}
+
+#btn-automated-task {
+    background: #8a3324;
+    color: white;
+    min-height: 3;
 }
 
 #btn-quit {
-    background: #222222;
-    color: #888888;
+    background: #d3d3d3;
+    color: black;
     min-height: 3;
 }
 
@@ -250,11 +257,23 @@ BehaviorSelectScreen {
     margin-bottom: 1;
 }
 
+#behsel-return {
+    width: 100%;
+    min-height: 4;
+    margin-bottom: 1;
+}
+
 #behavior-list {
     height: 1fr;
 }
 
 .behavior-btn {
+    width: 100%;
+    min-height: 3;
+    margin-bottom: 1;
+}
+
+#behsel-none {
     width: 100%;
     min-height: 3;
     margin-bottom: 1;
