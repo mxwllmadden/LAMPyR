@@ -28,23 +28,104 @@ def cli(ctx):
     def cleanup():
         ctx.obj.close()
 
-@cli.command()
-@click.pass_obj
-def configure(lampyr : Lampyr):
+def _prompt_yes_no(text, default=None):
+    """Prompt for a yes/no value and return it as a boolean."""
+    kwargs = {'type': click.Choice(['y', 'n'], case_sensitive=False)}
+    if default is not None:
+        kwargs['default'] = 'y' if default else 'n'
+    return click.prompt(text, **kwargs).lower() == 'y'
+
+
+def _initial_configuration(lampyr):
+    """Run the one-time Lampyr configuration questionnaire."""
     actions.printtitle('CONFIGURE LAMPYR')
     mouse_fp = click.prompt('Session/Mouse Data Path:')
-    sl = click.prompt('Enable save/load failsafe(y/n)?\n') == 'y'
-    mback = click.prompt('Enable local mouse file backup (y/n)?\n') == 'y'
-    if click.prompt('Would you like to enable plugins (y/n)?\n') == 'y':
+    sl = _prompt_yes_no('Enable save/load failsafe(y/n)?\n')
+    mback = _prompt_yes_no('Enable local mouse file backup (y/n)?\n')
+    if _prompt_yes_no('Would you like to enable plugins (y/n)?\n'):
         plugin_fp = click.prompt('Plugin Folder Path:')
     else:
         plugin_fp = None
+    automated = _prompt_yes_no('Enable automated tasks (y/n)?\n')
+
     lampyr.config.set('lampyr.mice_directory', mouse_fp)
     lampyr.config.set('lampyr.plugin_folder', plugin_fp)
-    lampyr.config.set('lampyr.enable_saveload_failsafe', mouse_fp)
-    lampyr.config.set('lampyr.enable_local_mouse_backups', mouse_fp)
+    lampyr.config.set('lampyr.enable_saveload_failsafe', sl)
+    lampyr.config.set('lampyr.enable_local_mouse_backups', mback)
+    lampyr.config.set('lampyr.enable_automated_tasks', automated)
     lampyr.config.set('lampyr.configured', True)
     click.echo('You have successfully configured your lampyr software')
+
+
+def _repair_legacy_boolean_settings(settings):
+    """Restore legacy path values in the two boolean CLI settings."""
+    for setting in ('enable_saveload_failsafe', 'enable_local_mouse_backups'):
+        key = f'lampyr.{setting}'
+        value = settings.get(key)
+        if not isinstance(value, bool):
+            default = config.Config.DEFAULT_CONFIG['lampyr'][setting]
+            settings.set(key, default)
+
+
+def _configuration_menu(lampyr):
+    """Allow an already-configured Lampyr to change one setting at a time."""
+    settings = lampyr.config
+    _repair_legacy_boolean_settings(settings)
+    while True:
+        click.echo('\nLampyr configuration settings:')
+        click.echo(f"1. Session/Mouse Data Path [{settings.get('lampyr.mice_directory')}]")
+        click.echo(f"2. Save/load failsafe [{settings.get('lampyr.enable_saveload_failsafe')}]")
+        click.echo(f"3. Local mouse file backup [{settings.get('lampyr.enable_local_mouse_backups')}]")
+        click.echo(f"4. Plugins [{settings.get('lampyr.plugin_folder') or 'disabled'}]")
+        click.echo(f"5. Automated tasks [{settings.get('lampyr.enable_automated_tasks')}]")
+        choice = click.prompt(
+            'Select a setting to change (q to exit)',
+            type=click.Choice(['1', '2', '3', '4', '5', 'q'],
+                              case_sensitive=False),
+        ).lower()
+
+        if choice == 'q':
+            click.echo('Configuration menu closed.')
+            return
+        if choice == '1':
+            settings.set('lampyr.mice_directory', click.prompt(
+                'Session/Mouse Data Path',
+                default=settings.get('lampyr.mice_directory'),
+            ))
+        elif choice == '2':
+            settings.set('lampyr.enable_saveload_failsafe', _prompt_yes_no(
+                'Enable save/load failsafe (y/n)?',
+                bool(settings.get('lampyr.enable_saveload_failsafe')),
+            ))
+        elif choice == '3':
+            settings.set('lampyr.enable_local_mouse_backups', _prompt_yes_no(
+                'Enable local mouse file backup (y/n)?',
+                bool(settings.get('lampyr.enable_local_mouse_backups')),
+            ))
+        elif choice == '4':
+            enabled = _prompt_yes_no(
+                'Would you like to enable plugins (y/n)?',
+                settings.get('lampyr.plugin_folder') is not None,
+            )
+            plugin_fp = click.prompt(
+                'Plugin Folder Path',
+                default=settings.get('lampyr.plugin_folder') or '',
+            ) if enabled else None
+            settings.set('lampyr.plugin_folder', plugin_fp)
+        elif choice == '5':
+            settings.set('lampyr.enable_automated_tasks', _prompt_yes_no(
+                'Enable automated tasks (y/n)?',
+                bool(settings.get('lampyr.enable_automated_tasks')),
+            ))
+
+
+@cli.command()
+@click.pass_obj
+def configure(lampyr : Lampyr):
+    if lampyr.config.get('lampyr.configured') is False:
+        _initial_configuration(lampyr)
+    else:
+        _configuration_menu(lampyr)
 
 def _origin(cls):
     """Return a short label for where a behaviour class was defined."""

@@ -165,7 +165,14 @@ class Config(ConfigFile):
             'mice_directory': 'N:/SHARED/Maxwell_Lampyr_MouseData',
             'plugin_folder': None,
             'enable_saveload_failsafe': True,
-            'enable_local_mouse_backups' : True
+            'enable_local_mouse_backups' : True,
+            'enable_automated_tasks': False,
+            'automated_task': {
+                'task': None,
+                'start_time': None,
+                'end_time': None,
+                'last_run_window': None
+            }
         },
         'rig': {
             'name': None,
