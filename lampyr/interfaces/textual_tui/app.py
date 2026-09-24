@@ -87,12 +87,56 @@ class TUIInputBridge:
 # ---------------------------------------------------------------------------
 
 
+def _parse_local_time(value: str | None) -> int | None:
+    """Return minutes since midnight for a strict canonical local time."""
+    if not isinstance(value, str) or not _re.fullmatch(
+        r"(?:[01]\d|2[0-3]):[0-5]\d", value
+    ):
+        return None
+    hour, minute = (int(part) for part in value.split(":"))
+    return hour * 60 + minute
+
+
 def _is_valid_local_time(value: str | None) -> bool:
     """Return whether *value* is a canonical 24-hour local time."""
-    return bool(
-        isinstance(value, str)
-        and _re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value)
-    )
+    return _parse_local_time(value) is not None
+
+
+def _active_scheduled_window(
+    start_value: str | None,
+    end_value: str | None,
+    now=None,
+) -> str | None:
+    """Return the start date of the active local schedule window.
+
+    The returned ISO date is the logical window identifier.  In an overnight
+    window, times after midnight therefore retain the previous day's start
+    date.  ``time.localtime`` is used by default so the scheduler follows the
+    machine's local clock rather than UTC.
+    """
+    start = _parse_local_time(start_value)
+    end = _parse_local_time(end_value)
+    if start is None or end is None:
+        return None
+
+    if now is None:
+        now = time.localtime()
+    current_minutes = now.tm_hour * 60 + now.tm_min
+    from datetime import date, timedelta
+
+    current_date = date(now.tm_year, now.tm_mon, now.tm_mday)
+    if start <= end:
+        if start <= current_minutes <= end:
+            return current_date.isoformat()
+        return None
+
+    # An overnight window belongs to today's start date before midnight and
+    # yesterday's start date after midnight.
+    if current_minutes >= start:
+        return current_date.isoformat()
+    if current_minutes <= end:
+        return (current_date - timedelta(days=1)).isoformat()
+    return None
 
 
 class NumpadModal(ModalScreen):
@@ -888,23 +932,23 @@ class LampyrApp(App):
         self._heartbeat()
 
     def start_scheduled_run(self) -> bool:
-        """Start the configured task when a later scheduler stage requests it.
-
-        This is intentionally a callable seam only; heartbeat does not invoke
-        it and no schedule window is evaluated here yet.
-        """
+        """Start the configured concrete ``Task`` via the scheduled-run seam."""
         task_class_name = self.lampyr.config.get("lampyr.automated_task.task")
-        if not task_class_name:
-            return False
-        if (
-            not isinstance(task_class_name, str)
-            or task_class_name not in self.lampyr.behaviors
+        task_class = None
+        if isinstance(task_class_name, str):
+            task_class = getattr(self.lampyr, "behaviors", {}).get(task_class_name)
+        if not (
+            isinstance(task_class, type)
+            and issubclass(task_class, Task)
+            and task_class is not Task
+            and not inspect.isabstract(task_class)
         ):
-            self.notify(
-                f"Scheduled task is not a valid behavior: {task_class_name}",
-                severity="error",
-                timeout=5,
-            )
+            if task_class_name:
+                self.notify(
+                    f"Scheduled task is not a valid behavior: {task_class_name}",
+                    severity="error",
+                    timeout=5,
+                )
             return False
         self.push_screen(ScheduledRunScreen(task_class_name))
         return True
@@ -931,27 +975,70 @@ class LampyrApp(App):
         self.set_interval(1200, self._heartbeat) #every 20 minutes
 
     def _heartbeat(self) -> None:
-        """Push CalibrationConfirmScreen whenever calibration has expired.
+        """Maintain calibration/heartbeat state and launch due scheduled work."""
+        try:
+            calibrated = self.lampyr.config.get("rig.calibrated")
+            expired = calibrated < time.time() - (5 * 24 * 60 * 60)
+        except (KeyError, TypeError):
+            expired = True
 
-        Scans the full screen stack so that a NumpadModal sitting on top of a
-        CalibrationScreen, or an already-open confirm screen, does not trigger
-        a second push.
-        """
-        expired = self.lampyr.config.get("rig.calibrated") < time.time() - (5*24*60*60)
-        already_active = any(
+        calibration_active = any(
             isinstance(s, (CalibrationScreen, CalibrationConfirmScreen))
             for s in self.screen_stack
         )
         session_running = any(isinstance(s, RunScreen) for s in self.screen_stack)
-        if expired and not already_active and not session_running:
+        calibration_pushed = False
+        if expired and not calibration_active and not session_running:
             self.push_screen(CalibrationConfirmScreen())
+            calibration_active = True
+            calibration_pushed = True
+
+        # Keep the existing heartbeat touch behavior: calibration screens do
+        # not suppress it, but an active run does.
         if not session_running:
             try:
                 self.lampyr.datamanager.heartbeat_filetouch()
             except Exception as e:
                 self.notify(
                     f"Heartbeat file touch failed.\n{type(e).__name__}: {e}",
-                    severity="error", timeout=20*60)
+                    severity="error", timeout=20 * 60)
+
+        # Calibration always wins, including a confirm screen pushed above.
+        if calibration_active or calibration_pushed or session_running:
+            return
+        if not isinstance(self.screen, MainScreen):
+            return
+
+        try:
+            if self.lampyr.config.get("lampyr.enable_automated_tasks") is not True:
+                return
+            task_name = self.lampyr.config.get("lampyr.automated_task.task")
+            start_time = self.lampyr.config.get("lampyr.automated_task.start_time")
+            end_time = self.lampyr.config.get("lampyr.automated_task.end_time")
+            window = _active_scheduled_window(start_time, end_time)
+            task_class = getattr(self.lampyr, "behaviors", {}).get(task_name)
+            if window is None or not (
+                isinstance(task_name, str)
+                and isinstance(task_class, type)
+                and issubclass(task_class, Task)
+                and task_class is not Task
+                and not inspect.isabstract(task_class)
+            ):
+                return
+            if window == self.lampyr.config.get(
+                "lampyr.automated_task.last_run_window"
+            ):
+                return
+
+            # This is an attempt marker, not a completion marker.  Persist it
+            # before pushing the run screen so a failed launch cannot refire.
+            self.lampyr.config.set(
+                "lampyr.automated_task.last_run_window", window
+            )
+            self.start_scheduled_run()
+        except (KeyError, TypeError, ValueError):
+            # Malformed or incomplete scheduling configuration is inert.
+            return
 
 
 if __name__ == "__main__":
