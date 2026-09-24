@@ -279,6 +279,56 @@ BehaviorSelectScreen {
     margin-bottom: 1;
 }
 
+/* ── Schedule Time Screen ───────────────────────────────── */
+ScheduleTimeScreen {
+    padding: 1 2;
+}
+
+#schedule-header,
+#schedule-task,
+#schedule-help {
+    width: 100%;
+    text-align: center;
+    padding: 1;
+}
+
+#schedule-header {
+    text-style: bold;
+    background: #1e3a5f;
+    color: white;
+}
+
+#schedule-task {
+    color: white;
+    text-style: bold;
+}
+
+#schedule-help {
+    color: #cccccc;
+}
+
+.schedule-time-btn {
+    width: 100%;
+    min-height: 5;
+    margin-bottom: 1;
+}
+
+#schedule-actions {
+    layout: horizontal;
+    height: auto;
+    margin-top: 1;
+}
+
+#schedule-save,
+#schedule-back {
+    width: 1fr;
+    min-height: 5;
+}
+
+#schedule-save {
+    margin-right: 1;
+}
+
 /* ── Task Param Screen ──────────────────────────────────── */
 
 #taskparam-header {

@@ -86,28 +86,51 @@ class TUIInputBridge:
 # NumpadModal — touch-friendly numeric / ID entry
 # ---------------------------------------------------------------------------
 
+
+def _is_valid_local_time(value: str | None) -> bool:
+    """Return whether *value* is a canonical 24-hour local time."""
+    return bool(
+        isinstance(value, str)
+        and _re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value)
+    )
+
+
 class NumpadModal(ModalScreen):
     """Touch-friendly numpad modal.
 
     mode='float'  →  decimal point key; validates as float on OK
     mode='int'    →  no decimal key; validates as int on OK
     mode='id'     →  dash key; validates as non-empty string on OK
+    mode='time'   →  colon key; validates canonical HH:MM on OK
     """
 
-    def __init__(self, prompt: str, mode: str = "float", calibration: bool = False):
+    def __init__(
+        self,
+        prompt: str,
+        mode: str = "float",
+        calibration: bool = False,
+        initial_value: str = "",
+    ):
         super().__init__()
         self._prompt = prompt
         self._mode = mode
         self._calibration = calibration
-        self._current = ""
+        self._current = initial_value if mode == "time" else ""
         self._pending = ""   # value awaiting confirmation
 
     def compose(self) -> ComposeResult:
-        extra_label = "." if self._mode == "float" else "-"
+        extra_label = (
+            "."
+            if self._mode == "float"
+            else (":" if self._mode == "time" else "-")
+        )
         classes = "numpad-calibration" if self._calibration else ""
         with Container(id="numpad-modal", classes=classes):
             yield Label(self._prompt, id="numpad-prompt")
-            yield Label("0" if self._mode == "float" else "", id="numpad-display")
+            yield Label(
+                self._current or ("0" if self._mode == "float" else ""),
+                id="numpad-display",
+            )
             # ── Entry widgets ──────────────────────────────
             with Container(id="numpad-grid"):
                 yield Button("7", id="n7",    classes="numpad-digit")
@@ -183,6 +206,11 @@ class NumpadModal(ModalScreen):
                         self._show_confirm(val)
                     except (ValueError, TypeError):
                         self.query_one("#numpad-display", Label).update("invalid!")
+            elif self._mode == "time":
+                if _is_valid_local_time(val):
+                    self._show_confirm(val)
+                else:
+                    self.query_one("#numpad-display", Label).update("invalid!")
             else:
                 if val:
                     self._show_confirm(val)
@@ -197,6 +225,8 @@ class NumpadModal(ModalScreen):
                 self._current += "."
             elif self._mode == "id":
                 self._current += "-"
+            elif self._mode == "time" and ":" not in self._current:
+                self._current += ":"
             elif self._mode == "int" and self._current == "":
                 self._current = "-"
         else:
@@ -356,15 +386,122 @@ class BehaviorSelectScreen(Screen):
             if self._on_task_selected is not None:
                 self._on_task_selected(behavior_name)
             else:
-                self.app.notify(
-                    f"Selected automated task: {behavior_name}. "
-                    "Scheduling setup is not available yet.",
-                    severity="information",
-                    timeout=5,
-                )
-                self.app.pop_screen()
+                self.app.push_screen(ScheduleTimeScreen(behavior_name))
             return
         self.app.push_screen(TaskParamScreen(self._mouseid, behavior_name))
+
+
+# ---------------------------------------------------------------------------
+# ScheduleTimeScreen — configure an automated task's local time window
+# ---------------------------------------------------------------------------
+
+
+class ScheduleTimeScreen(Screen):
+
+    def __init__(self, task: str):
+        super().__init__()
+        self._task_class_name = task
+        self._start_time: str | None = None
+        self._end_time: str | None = None
+        self._config_loaded = False
+
+    def _configured_time(self, key: str) -> str | None:
+        value = self.app.lampyr.config.get(key)
+        if value is None or value == "":
+            return None
+        return str(value)
+
+    @staticmethod
+    def _time_button_label(label: str, value: str | None) -> str:
+        return f"{label}  [ {value if value is not None else 'UNSET'} ]"
+
+    def compose(self) -> ComposeResult:
+        if not self._config_loaded:
+            self._start_time = self._configured_time(
+                "lampyr.automated_task.start_time"
+            )
+            self._end_time = self._configured_time(
+                "lampyr.automated_task.end_time"
+            )
+            self._config_loaded = True
+
+        yield Label("Schedule Automated Task", id="schedule-header")
+        yield Label(f"Task: {self._task_class_name}", id="schedule-task")
+        yield Label("Set local times (24-hour HH:MM):", id="schedule-help")
+        yield Button(
+            self._time_button_label("START", self._start_time),
+            id="schedule-start",
+            classes="schedule-time-btn",
+        )
+        yield Button(
+            self._time_button_label("END", self._end_time),
+            id="schedule-end",
+            classes="schedule-time-btn",
+        )
+        with Container(id="schedule-actions"):
+            yield Button("✓  SAVE", id="schedule-save", variant="success")
+            yield Button("◀  BACK", id="schedule-back")
+
+    @on(Button.Pressed, ".schedule-time-btn")
+    def on_time_button(self, event: Button.Pressed) -> None:
+        is_start = event.button.id == "schedule-start"
+        value = self._start_time if is_start else self._end_time
+        label = "start" if is_start else "end"
+        self.app.push_screen(
+            NumpadModal(
+                f"Set {label} time (HH:MM):",
+                mode="time",
+                initial_value=value or "",
+            ),
+            lambda new_value, start=is_start: self._on_time_set(start, new_value),
+        )
+
+    def _on_time_set(self, is_start: bool, value: str | None) -> None:
+        if not _is_valid_local_time(value):
+            return
+        if is_start:
+            self._start_time = value
+            button_id, label = "schedule-start", "START"
+        else:
+            self._end_time = value
+            button_id, label = "schedule-end", "END"
+        self.query_one(f"#{button_id}", Button).label = self._time_button_label(
+            label, value
+        )
+
+    @on(Button.Pressed, "#schedule-save")
+    def on_save(self) -> None:
+        if not _is_valid_local_time(self._start_time) or not _is_valid_local_time(
+            self._end_time
+        ):
+            self.app.notify(
+                "Set valid start and end times in HH:MM format before saving.",
+                severity="error",
+                timeout=5,
+            )
+            return
+
+        config = self.app.lampyr.config
+        config.set("lampyr.automated_task.task", self._task_class_name)
+        config.set("lampyr.automated_task.start_time", self._start_time)
+        config.set("lampyr.automated_task.end_time", self._end_time)
+        config.set("lampyr.automated_task.last_run_window", None)
+
+        for screen in reversed(self.app.screen_stack):
+            if isinstance(screen, MainScreen):
+                screen.pop_until_active()
+                break
+        else:
+            self.app.switch_screen(MainScreen())
+        self.app.notify(
+            f"Automated task scheduled: {self._task_class_name} ({self._start_time}–{self._end_time}).",
+            severity="information",
+            timeout=5,
+        )
+
+    @on(Button.Pressed, "#schedule-back")
+    def on_back(self) -> None:
+        self.app.pop_screen()
 
 
 # ---------------------------------------------------------------------------
@@ -657,18 +794,8 @@ class MainScreen(Screen):
         )
 
     def _on_automated_task_selected(self, behavior_name: str) -> None:
-        """Temporary handoff until the schedule-time screen exists.
-
-        Keep this path side-effect free: selecting a task alone must not write
-        an incomplete schedule to configuration.
-        """
-        self.app.notify(
-            f"Selected automated task: {behavior_name}. "
-            "Scheduling setup is not available yet.",
-            severity="information",
-            timeout=5,
-        )
-        self.app.pop_screen()
+        """Open time configuration without persisting an incomplete schedule."""
+        self.app.push_screen(ScheduleTimeScreen(behavior_name))
 
     # ── CALIBRATE ────────────────────────────────────────────────────────
 
