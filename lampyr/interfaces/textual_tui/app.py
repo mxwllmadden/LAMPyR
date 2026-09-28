@@ -5,6 +5,7 @@ Launched via: lampyr go
 """
 
 import ctypes
+import inspect
 import re as _re
 import threading
 import time
@@ -85,28 +86,95 @@ class TUIInputBridge:
 # NumpadModal — touch-friendly numeric / ID entry
 # ---------------------------------------------------------------------------
 
+
+def _parse_local_time(value: str | None) -> int | None:
+    """Return minutes since midnight for a strict canonical local time."""
+    if not isinstance(value, str) or not _re.fullmatch(
+        r"(?:[01]\d|2[0-3]):[0-5]\d", value
+    ):
+        return None
+    hour, minute = (int(part) for part in value.split(":"))
+    return hour * 60 + minute
+
+
+def _is_valid_local_time(value: str | None) -> bool:
+    """Return whether *value* is a canonical 24-hour local time."""
+    return _parse_local_time(value) is not None
+
+
+def _active_scheduled_window(
+    start_value: str | None,
+    end_value: str | None,
+    now=None,
+) -> str | None:
+    """Return the start date of the active local schedule window.
+
+    The returned ISO date is the logical window identifier.  In an overnight
+    window, times after midnight therefore retain the previous day's start
+    date.  ``time.localtime`` is used by default so the scheduler follows the
+    machine's local clock rather than UTC.
+    """
+    start = _parse_local_time(start_value)
+    end = _parse_local_time(end_value)
+    if start is None or end is None:
+        return None
+
+    if now is None:
+        now = time.localtime()
+    current_minutes = now.tm_hour * 60 + now.tm_min
+    from datetime import date, timedelta
+
+    current_date = date(now.tm_year, now.tm_mon, now.tm_mday)
+    if start <= end:
+        if start <= current_minutes <= end:
+            return current_date.isoformat()
+        return None
+
+    # An overnight window belongs to today's start date before midnight and
+    # yesterday's start date after midnight.
+    if current_minutes >= start:
+        return current_date.isoformat()
+    if current_minutes <= end:
+        return (current_date - timedelta(days=1)).isoformat()
+    return None
+
+
 class NumpadModal(ModalScreen):
     """Touch-friendly numpad modal.
 
     mode='float'  →  decimal point key; validates as float on OK
     mode='int'    →  no decimal key; validates as int on OK
     mode='id'     →  dash key; validates as non-empty string on OK
+    mode='time'   →  colon key; validates canonical HH:MM on OK
     """
 
-    def __init__(self, prompt: str, mode: str = "float", calibration: bool = False):
+    def __init__(
+        self,
+        prompt: str,
+        mode: str = "float",
+        calibration: bool = False,
+        initial_value: str = "",
+    ):
         super().__init__()
         self._prompt = prompt
         self._mode = mode
         self._calibration = calibration
-        self._current = ""
+        self._current = initial_value if mode == "time" else ""
         self._pending = ""   # value awaiting confirmation
 
     def compose(self) -> ComposeResult:
-        extra_label = "." if self._mode == "float" else "-"
+        extra_label = (
+            "."
+            if self._mode == "float"
+            else (":" if self._mode == "time" else "-")
+        )
         classes = "numpad-calibration" if self._calibration else ""
         with Container(id="numpad-modal", classes=classes):
             yield Label(self._prompt, id="numpad-prompt")
-            yield Label("0" if self._mode == "float" else "", id="numpad-display")
+            yield Label(
+                self._current or ("0" if self._mode == "float" else ""),
+                id="numpad-display",
+            )
             # ── Entry widgets ──────────────────────────────
             with Container(id="numpad-grid"):
                 yield Button("7", id="n7",    classes="numpad-digit")
@@ -182,6 +250,11 @@ class NumpadModal(ModalScreen):
                         self._show_confirm(val)
                     except (ValueError, TypeError):
                         self.query_one("#numpad-display", Label).update("invalid!")
+            elif self._mode == "time":
+                if _is_valid_local_time(val):
+                    self._show_confirm(val)
+                else:
+                    self.query_one("#numpad-display", Label).update("invalid!")
             else:
                 if val:
                     self._show_confirm(val)
@@ -196,6 +269,8 @@ class NumpadModal(ModalScreen):
                 self._current += "."
             elif self._mode == "id":
                 self._current += "-"
+            elif self._mode == "time" and ":" not in self._current:
+                self._current += ":"
             elif self._mode == "int" and self._current == "":
                 self._current = "-"
         else:
@@ -288,32 +363,194 @@ class CalibrationScreen(Screen):
 
 
 # ---------------------------------------------------------------------------
-# BehaviorSelectScreen — pick a behavior (ADVANCED flow)
+# BehaviorSelectScreen — pick a behavior for a mouse or an automated task
 # ---------------------------------------------------------------------------
+
+
+def _discover_task_names(behaviors: dict) -> list[str]:
+    """Return registered, concrete ``Task`` names for selection screens."""
+    return [
+        name for name, cls in behaviors.items()
+        if isinstance(cls, type)
+        and issubclass(cls, Task)
+        and cls is not Task
+        and not inspect.isabstract(cls)
+    ]
+
 
 class BehaviorSelectScreen(Screen):
 
-    def __init__(self, mouseid: str):
+    def __init__(
+        self,
+        mouseid: str | None = None,
+        *,
+        scheduling: bool = False,
+        on_task_selected: Callable[[str], None] | None = None,
+    ):
         super().__init__()
-        self._mouseid = mouseid
+        self._mouseid = None if scheduling else mouseid
+        self._scheduling = scheduling
+        self._on_task_selected = on_task_selected
 
     def compose(self) -> ComposeResult:
-        yield Label(
-            f"Select Behavior  ·  Mouse: {self._mouseid}",
-            id="behsel-header",
+        header = (
+            "Select Automated Task to Schedule"
+            if self._scheduling
+            else f"Select Behavior  ·  Mouse: {self._mouseid}"
         )
-        user_behaviors = [
-            name for name, cls in self.app.lampyr.behaviors.items()
-            if issubclass(cls, Task) and cls is not Task
-        ]
+        yield Label(header, id="behsel-header")
+        yield Button("◀  RETURN TO MAIN", id="behsel-return")
+        task_names = _discover_task_names(self.app.lampyr.behaviors)
         with VerticalScroll(id="behavior-list"):
-            for name in user_behaviors:
+            for name in task_names:
                 yield Button(name, classes="behavior-btn")
+            if self._scheduling:
+                yield Button("None", id="behsel-none")
+
+    @on(Button.Pressed, "#behsel-return")
+    def on_return_to_main(self) -> None:
+        for screen in reversed(self.app.screen_stack):
+            if isinstance(screen, MainScreen):
+                screen.pop_until_active()
+                return
+        self.app.switch_screen(MainScreen())
+
+    @on(Button.Pressed, "#behsel-none")
+    def on_clear_automated_task(self) -> None:
+        if not self._scheduling:
+            return
+        self.app.lampyr.config.set("lampyr.automated_task.task", None)
+        self.app.notify("Automated task cleared.", severity="information", timeout=5)
+        self.on_return_to_main()
 
     @on(Button.Pressed, ".behavior-btn")
     def on_behavior(self, event: Button.Pressed) -> None:
         behavior_name = str(event.button.label)
+        if self._scheduling:
+            if self._on_task_selected is not None:
+                self._on_task_selected(behavior_name)
+            else:
+                self.app.push_screen(ScheduleTimeScreen(behavior_name))
+            return
         self.app.push_screen(TaskParamScreen(self._mouseid, behavior_name))
+
+
+# ---------------------------------------------------------------------------
+# ScheduleTimeScreen — configure an automated task's local time window
+# ---------------------------------------------------------------------------
+
+
+class ScheduleTimeScreen(Screen):
+
+    def __init__(self, task: str):
+        super().__init__()
+        self._task_class_name = task
+        self._start_time: str | None = None
+        self._end_time: str | None = None
+        self._config_loaded = False
+
+    def _configured_time(self, key: str) -> str | None:
+        value = self.app.lampyr.config.get(key)
+        if value is None or value == "":
+            return None
+        return str(value)
+
+    @staticmethod
+    def _time_button_label(label: str, value: str | None) -> str:
+        return f"{label}  [ {value if value is not None else 'UNSET'} ]"
+
+    def compose(self) -> ComposeResult:
+        if not self._config_loaded:
+            self._start_time = self._configured_time(
+                "lampyr.automated_task.start_time"
+            )
+            self._end_time = self._configured_time(
+                "lampyr.automated_task.end_time"
+            )
+            self._config_loaded = True
+
+        yield Label("Schedule Automated Task", id="schedule-header")
+        yield Label(f"Task: {self._task_class_name}", id="schedule-task")
+        yield Label("Set local times (24-hour HH:MM):", id="schedule-help")
+        yield Button(
+            self._time_button_label("START", self._start_time),
+            id="schedule-start",
+            classes="schedule-time-btn",
+        )
+        yield Button(
+            self._time_button_label("END", self._end_time),
+            id="schedule-end",
+            classes="schedule-time-btn",
+        )
+        with Container(id="schedule-actions"):
+            yield Button("✓  SAVE", id="schedule-save", variant="success")
+            yield Button("◀  BACK", id="schedule-back")
+
+    @on(Button.Pressed, ".schedule-time-btn")
+    def on_time_button(self, event: Button.Pressed) -> None:
+        is_start = event.button.id == "schedule-start"
+        value = self._start_time if is_start else self._end_time
+        label = "start" if is_start else "end"
+        self.app.push_screen(
+            NumpadModal(
+                f"Set {label} time (HH:MM):",
+                mode="time",
+                initial_value=value or "",
+            ),
+            lambda new_value, start=is_start: self._on_time_set(start, new_value),
+        )
+
+    def _on_time_set(self, is_start: bool, value: str | None) -> None:
+        if not _is_valid_local_time(value):
+            return
+        if is_start:
+            self._start_time = value
+            button_id, label = "schedule-start", "START"
+        else:
+            self._end_time = value
+            button_id, label = "schedule-end", "END"
+        self.query_one(f"#{button_id}", Button).label = self._time_button_label(
+            label, value
+        )
+
+    @on(Button.Pressed, "#schedule-save")
+    def on_save(self) -> None:
+        if not _is_valid_local_time(self._start_time) or not _is_valid_local_time(
+            self._end_time
+        ):
+            self.app.notify(
+                "Set valid start and end times in HH:MM format before saving.",
+                severity="error",
+                timeout=5,
+            )
+            return
+
+        config = self.app.lampyr.config
+        config.set(
+            "lampyr.automated_task",
+            {
+                "task": self._task_class_name,
+                "start_time": self._start_time,
+                "end_time": self._end_time,
+                "last_run_window": None,
+            },
+        )
+
+        for screen in reversed(self.app.screen_stack):
+            if isinstance(screen, MainScreen):
+                screen.pop_until_active()
+                break
+        else:
+            self.app.switch_screen(MainScreen())
+        self.app.notify(
+            f"Automated task scheduled: {self._task_class_name} ({self._start_time}–{self._end_time}).",
+            severity="information",
+            timeout=5,
+        )
+
+    @on(Button.Pressed, "#schedule-back")
+    def on_back(self) -> None:
+        self.app.pop_screen()
 
 
 # ---------------------------------------------------------------------------
@@ -433,6 +670,10 @@ class RunScreen(Screen):
     def on_log(self, event: LogOutput) -> None:
         self.query_one("#run-output", RichLog).write(Text.from_ansi(_shorten_segment_slug(event.text)))
 
+    def _load_mouse(self) -> None:
+        """Load the mouse that will receive this session."""
+        self.app.lampyr.mousemanager.load(self._mouseid)
+
     def _run(self) -> None:
         import traceback as _tb
 
@@ -443,7 +684,7 @@ class RunScreen(Screen):
         error = False
         try:
             out(f"Loading mouse {self._mouseid}...")
-            self.app.lampyr.mousemanager.load(self._mouseid)
+            self._load_mouse()
 
             # Describe rig start failures explicitly — actions.Abort has no message
             out("Checking rig configuration...")
@@ -527,16 +768,42 @@ class RunScreen(Screen):
             if self._animal_timer is not None:
                 self._animal_timer.cancel()
                 self._animal_timer = None
-            for screen in reversed(self.app.screen_stack):
-                if isinstance(screen, MainScreen):
-                    screen.pop_until_active()
-                    break
-            else:
-                self.app.pop_screen()
+            self.app._return_to_main()
+
+
+class ScheduledRunScreen(RunScreen):
+    """Run the configured automated task against the dedicated sentinel mouse."""
+
+    AUTOMOUSE = "AUTOMOUSE"
+
+    def __init__(self, task_class_name: str, session_params: dict = None):
+        super().__init__(
+            self.AUTOMOUSE,
+            task_class_name,
+            session_params=session_params,
+        )
+
+    def _load_mouse(self) -> None:
+        """Create AUTOMOUSE if necessary, then explicitly make it active."""
+        mousemanager = self.app.lampyr.mousemanager
+        if not mousemanager.exists(self.AUTOMOUSE):
+            mousemanager.create(self.AUTOMOUSE)
+        # create() sets the active mouse, but always load explicitly too: a
+        # real mouse loaded before this screen must never receive this session.
+        mousemanager.load(self.AUTOMOUSE)
+
+    @on(RunScreen.RunDone)
+    def on_done(self, event: RunScreen.RunDone) -> None:
+        """Close and return to MainScreen without the manual-run alert timer."""
+        try:
+            self.app.lampyr.close()
+        except Exception:
+            pass
+        self.app._return_to_main()
 
 
 # ---------------------------------------------------------------------------
-# MainScreen — three large touch buttons
+# MainScreen — large touch buttons
 # ---------------------------------------------------------------------------
 
 class MainScreen(Screen):
@@ -548,6 +815,8 @@ class MainScreen(Screen):
             yield Button("RUN",       id="btn-run",       classes="main-btn")
             yield Button("ADVANCED",  id="btn-advanced",  classes="main-btn")
             yield Button("CALIBRATE", id="btn-calibrate", classes="main-btn")
+            if self.app.lampyr.config.get("lampyr.enable_automated_tasks"):
+                yield Button("AUTOMATED TASK", id="btn-automated-task", classes="main-btn")
             yield Button("✕  QUIT",   id="btn-quit",      classes="main-btn")
 
     # ── RUN ──────────────────────────────────────────────────────────────
@@ -591,6 +860,21 @@ class MainScreen(Screen):
             self.app.notify(f"Mouse not found: {mouseid}", severity="error", timeout=5)
             return
         self.app.push_screen(BehaviorSelectScreen(mouseid))
+
+    # ── AUTOMATED TASK ───────────────────────────────────────────────────
+
+    @on(Button.Pressed, "#btn-automated-task")
+    def on_automated_task(self) -> None:
+        self.app.push_screen(
+            BehaviorSelectScreen(
+                scheduling=True,
+                on_task_selected=self._on_automated_task_selected,
+            )
+        )
+
+    def _on_automated_task_selected(self, behavior_name: str) -> None:
+        """Open time configuration without persisting an incomplete schedule."""
+        self.app.push_screen(ScheduleTimeScreen(behavior_name))
 
     # ── CALIBRATE ────────────────────────────────────────────────────────
 
@@ -642,6 +926,38 @@ class LampyrApp(App):
         ):
             mgr._output_func = func
 
+    def _return_to_main(self) -> None:
+        """Return to the existing MainScreen and refresh the heartbeat."""
+        for screen in reversed(self.screen_stack):
+            if isinstance(screen, MainScreen):
+                screen.pop_until_active()
+                self._heartbeat()
+                return
+        self.switch_screen(MainScreen())
+        self._heartbeat()
+
+    def start_scheduled_run(self) -> bool:
+        """Start the configured concrete ``Task`` via the scheduled-run seam."""
+        task_class_name = self.lampyr.config.get("lampyr.automated_task.task")
+        task_class = None
+        if isinstance(task_class_name, str):
+            task_class = getattr(self.lampyr, "behaviors", {}).get(task_class_name)
+        if not (
+            isinstance(task_class, type)
+            and issubclass(task_class, Task)
+            and task_class is not Task
+            and not inspect.isabstract(task_class)
+        ):
+            if task_class_name:
+                self.notify(
+                    f"Scheduled task is not a valid behavior: {task_class_name}",
+                    severity="error",
+                    timeout=5,
+                )
+            return False
+        self.push_screen(ScheduledRunScreen(task_class_name))
+        return True
+
     def _show_numpad(self, prompt: str) -> None:
         """Push the numpad modal and route its result back to the bridge."""
         calibration = isinstance(self.screen, CalibrationScreen)
@@ -664,27 +980,70 @@ class LampyrApp(App):
         self.set_interval(1200, self._heartbeat) #every 20 minutes
 
     def _heartbeat(self) -> None:
-        """Push CalibrationConfirmScreen whenever calibration has expired.
+        """Maintain calibration/heartbeat state and launch due scheduled work."""
+        try:
+            calibrated = self.lampyr.config.get("rig.calibrated")
+            expired = calibrated < time.time() - (5 * 24 * 60 * 60)
+        except (KeyError, TypeError):
+            expired = True
 
-        Scans the full screen stack so that a NumpadModal sitting on top of a
-        CalibrationScreen, or an already-open confirm screen, does not trigger
-        a second push.
-        """
-        expired = self.lampyr.config.get("rig.calibrated") < time.time() - (5*24*60*60)
-        already_active = any(
+        calibration_active = any(
             isinstance(s, (CalibrationScreen, CalibrationConfirmScreen))
             for s in self.screen_stack
         )
         session_running = any(isinstance(s, RunScreen) for s in self.screen_stack)
-        if expired and not already_active and not session_running:
+        calibration_pushed = False
+        if expired and not calibration_active and not session_running:
             self.push_screen(CalibrationConfirmScreen())
+            calibration_active = True
+            calibration_pushed = True
+
+        # Keep the existing heartbeat touch behavior: calibration screens do
+        # not suppress it, but an active run does.
         if not session_running:
             try:
                 self.lampyr.datamanager.heartbeat_filetouch()
             except Exception as e:
                 self.notify(
                     f"Heartbeat file touch failed.\n{type(e).__name__}: {e}",
-                    severity="error", timeout=20*60)
+                    severity="error", timeout=20 * 60)
+
+        # Calibration always wins, including a confirm screen pushed above.
+        if calibration_active or calibration_pushed or session_running:
+            return
+        if not isinstance(self.screen, MainScreen):
+            return
+
+        try:
+            if self.lampyr.config.get("lampyr.enable_automated_tasks") is not True:
+                return
+            task_name = self.lampyr.config.get("lampyr.automated_task.task")
+            start_time = self.lampyr.config.get("lampyr.automated_task.start_time")
+            end_time = self.lampyr.config.get("lampyr.automated_task.end_time")
+            window = _active_scheduled_window(start_time, end_time)
+            task_class = getattr(self.lampyr, "behaviors", {}).get(task_name)
+            if window is None or not (
+                isinstance(task_name, str)
+                and isinstance(task_class, type)
+                and issubclass(task_class, Task)
+                and task_class is not Task
+                and not inspect.isabstract(task_class)
+            ):
+                return
+            if window == self.lampyr.config.get(
+                "lampyr.automated_task.last_run_window"
+            ):
+                return
+
+            # This is an attempt marker, not a completion marker.  Persist it
+            # before pushing the run screen so a failed launch cannot refire.
+            self.lampyr.config.set(
+                "lampyr.automated_task.last_run_window", window
+            )
+            self.start_scheduled_run()
+        except (KeyError, TypeError, ValueError):
+            # Malformed or incomplete scheduling configuration is inert.
+            return
 
 
 if __name__ == "__main__":
