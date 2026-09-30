@@ -274,61 +274,6 @@ class BehaviorSegment(Segment):
                                        'kwargs': kwargs})
         return t
     
-
-                
-@dataclass
-class Task(BehaviorSegment):
-    """
-    Implements methods for trawling for trial data and extracting aggregate information
-    """
-    _LOOP_DELAY : float = 0.01
-    def execute(self):
-        """
-        Run the setup-loop cycle, polling stop conditions each iteration.
-
-        Calls :meth:`setup` once, then repeatedly calls :meth:`loop` until
-        the session reports one or more stop conditions.
-        """
-        self.setup()
-        while True:
-            self.stop_reasons += self.session.evaluatestopconditions()
-            if self.stop_reasons:
-                break
-            self.loop()
-            time.sleep(self._LOOP_DELAY)
-    
-    @abstractmethod
-    def setup(self):
-        """Perform one-time initialisation before the main loop."""
-        pass
-
-    @abstractmethod
-    def loop(self):
-        """Execute a single iteration of the segment's main loop."""
-        pass
-
-
-@dataclass
-class Trial(BehaviorSegment):
-    def execute(self):
-        """
-        Run the trial, calling :meth:`setup` once and :meth:`perform` until completion.
-        """
-        self.setup()
-        self.perform()
-        self.log_trial()
-        self.finish()
-    
-    @abstractmethod
-    def setup(self):
-        """Perform one-time initialisation before the main loop."""
-        pass
-
-    @abstractmethod
-    def perform(self):
-        """Trial Logic goes here."""
-        pass
-    
     def waitfor(
         self,
         condition,
@@ -382,6 +327,60 @@ class Trial(BehaviorSegment):
         self.log_debug(f'Waiting for {duration} seconds...')
         time.sleep(duration)
         self.log_debug('Stopped waiting')
+    
+
+                
+@dataclass
+class Task(BehaviorSegment):
+    """
+    Implements methods for trawling for trial data and extracting aggregate information
+    """
+    _LOOP_DELAY : float = 0.01
+    def execute(self):
+        """
+        Run the setup-loop cycle, polling stop conditions each iteration.
+
+        Calls :meth:`setup` once, then repeatedly calls :meth:`loop` until
+        the session reports one or more stop conditions.
+        """
+        self.setup()
+        while True:
+            self.stop_reasons += self.session.evaluatestopconditions()
+            if self.stop_reasons:
+                break
+            self.loop()
+            time.sleep(self._LOOP_DELAY)
+    
+    @abstractmethod
+    def setup(self):
+        """Perform one-time initialisation before the main loop."""
+        pass
+
+    @abstractmethod
+    def loop(self):
+        """Execute a single iteration of the segment's main loop."""
+        pass
+
+@dataclass
+class Trial(BehaviorSegment):
+    def execute(self):
+        """
+        Run the trial, calling :meth:`setup` once and :meth:`perform` until completion.
+        """
+        self.setup()
+        self.perform()
+        self.log_trial()
+        self.finish()
+    
+    @abstractmethod
+    def setup(self):
+        """Perform one-time initialisation before the main loop."""
+        pass
+
+    @abstractmethod
+    def perform(self):
+        """Trial Logic goes here."""
+        pass
         
 def TrialToTask(trial_cls):
     """Return a Task class that runs ``trial_cls`` once per loop."""
