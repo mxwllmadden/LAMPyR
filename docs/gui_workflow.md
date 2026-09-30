@@ -32,14 +32,15 @@ Use `--notouchoverlay` if the transparent Windows touch bridge interferes with l
 
 ## Main screen
 
-The main screen shows the configured rig name as ASCII art and four large buttons:
+The main screen shows the configured rig name as ASCII art and these buttons:
 
 1. `RUN`
 2. `ADVANCED`
 3. `CALIBRATE`
-4. `QUIT`
+4. `AUTOMATED TASK` when automated tasks are enabled
+5. `QUIT`
 
-The rig name comes from `config['rig.name']`. If no rig name is configured, the title falls back to `Lampyr`.
+The rig name comes from `config['rig.name']`. If no rig name is configured, the title falls back to `Lampyr`. Automated tasks can be enabled during initial `lampyr configure` setup or later through setting 5 in the configuration menu.
 
 ## RUN workflow: normal mouse/paradigm run
 
@@ -103,6 +104,18 @@ Tap a parameter to open the integer numpad. Enter a value and confirm. Entering 
 
 When `RUN` is tapped, these values are passed as keyword arguments to `Lampyr.run()` and become `Session` stop conditions.
 
+## Automated task workflow
+
+When automated tasks are enabled, tap `AUTOMATED TASK` to configure the rig's single recurring schedule.
+
+1. Select a concrete `Task` subclass. No mouse ID is requested.
+2. Set the start and end of the daily local-time window using strict 24-hour `HH:MM` values.
+3. Tap `SAVE` to persist the complete schedule and reset its previous run marker.
+
+The selector's `None` button clears the configured task. It appears only in scheduling mode. `RETURN TO MAIN` exits without selecting a task, while `BACK` on the time screen returns to task selection without saving.
+
+Both ordinary ranges such as `09:00`–`10:00` and overnight ranges such as `22:00`–`02:00` are supported. An overnight window is associated with the date on which it starts.
+
 ## Run screen
 
 The run screen is a black log-output screen with one large action button.
@@ -138,7 +151,13 @@ After a session ends, the action button changes to a return button:
 - `RETURN TO MAIN` for a clean finish.
 - `RETURN (session ended with error)` for an error finish.
 
-Returning cancels the post-session animal-left timer.
+Returning cancels the post-session animal-left timer. Returning from a manual run also invokes the heartbeat immediately.
+
+### Scheduled run screen
+
+A due automated task opens a scheduled run screen that reuses the normal session log and `ABORT` control. It creates `AUTOMOUSE` if necessary and explicitly loads that sentinel before every scheduled run, ensuring a previously loaded real mouse cannot receive the automated session.
+
+Scheduled runs do not start the post-session animal-left timer. They automatically return to the main menu after success, abort, or error, and invoke the heartbeat after returning.
 
 ### Post-session animal-left alert
 
@@ -165,9 +184,22 @@ lampyr rig calibrate
 
 It updates the stored sipper calibration and calibration timestamp on success.
 
-## Automatic calibration reminder
+## Heartbeat, calibration, and automated execution
 
-The app heartbeat checks calibration age. If calibration is older than five days and no calibration/run screen is active, the GUI automatically pushes the calibration confirmation screen.
+The heartbeat runs at startup, every 20 minutes, and whenever a manual or scheduled run returns to the main menu.
+
+Calibration has priority. If calibration is older than five days and no calibration/run screen is active, the heartbeat pushes the calibration confirmation screen and does not launch automated work.
+
+When calibration is current, the heartbeat launches the configured automated task only when:
+
+- automated tasks are enabled;
+- the task name resolves to a concrete imported `Task` subclass;
+- both configured times are valid;
+- local system time is inside the configured range;
+- the app is idle on the main screen; and
+- the logical daily window has not already been attempted.
+
+The window identifier is persisted immediately before launch. Consequently, a task is attempted at most once per window even if startup fails. Because periodic checks are 20 minutes apart, use a window wider than 20 minutes if it must be observed reliably.
 
 The heartbeat also touches `heartbeat.file` in the shared mice directory when no session is running. If that file operation fails, the GUI displays an error notification.
 
@@ -177,13 +209,15 @@ The GUI uses a touch-friendly numpad modal for:
 
 - mouse IDs;
 - integer session parameters;
-- floating-point calibration weights.
+- floating-point calibration weights; and
+- automated-task start and end times.
 
 Modes:
 
 - `id`: digits plus `-`; requires a non-empty string.
 - `int`: digits plus optional leading `-`; validates as an integer. A single `-` is used in the task parameter screen to clear a parameter.
 - `float`: digits plus decimal point; validates as a float.
+- `time`: digits plus `:`; requires a canonical 24-hour `HH:MM` value from `00:00` through `23:59`.
 
 All entries use a confirmation step before submission.
 
