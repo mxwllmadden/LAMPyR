@@ -6,15 +6,15 @@ Created on Mon Aug 25 18:40:05 2025
 """
 
 from lampyr.managers.abstract import AbstractManager
-from lampyr.files import savemousefile, loadmousefile, loadsessionfile, savesessionfile, loadjson, savejson
+from lampyr.files import (savemousefile, loadmousefile, loadsessionfile,
+                          savesessionfile, loadjson, savejson, savecsv)
 import os
 from pathlib import Path
-import json
 import glob
 from lampyr.primatives import Session, Mouse
 import shutil
-import csv
 import hashlib
+import tempfile
 from datetime import datetime
 
 from typing import List
@@ -79,40 +79,42 @@ def hashcheck_copyoverwrite(sourcefile, targetfile):
 
 
 class DataHandler(AbstractManager):
-    CONFIG_FAILSAFE_DEFAULT = {'sessions': [],
-                               'files': [], }
 
     def start(self):
-        """
-        DataHandler startup. If this object is instantiated with a config file,
-        determine if backups and failsafes are enabled, then execute those methods.
-
-
-        Returns
-        -------
-        None.
-
-        """
-        configured = self.config is not None
-        haslampyr = self.lampyr is not None
-        if not configured:
+        """Configure backups and retry committed pending sessions."""
+        if self.config is None:
             return
-        self.enable_failsafe = self.config.get(
-            'lampyr.enable_saveload_failsafe') and haslampyr
-        self.enable_localbackup = self.config.get(
-            'lampyr.enable_local_mouse_backups') and haslampyr
 
-        # Create required information for backups and cleanup
+        self.enable_failsafe = bool(self.config.get(
+            'lampyr.enable_saveload_failsafe'))
+        self.enable_localbackup = bool(self.config.get(
+            'lampyr.enable_local_mouse_backups')) and self.lampyr is not None
         self.local_save_dir = self.config._APP_DATA_DIR
-        self.config_failsafe_data = self.config.load_extended_config('data_failsafe',
-                                                                     default=self.CONFIG_FAILSAFE_DEFAULT)
-        # Check if
-        m_dir_present = os.path.exists(
-            self.config.get('lampyr.mice_directory'))
-        if m_dir_present and self.enable_localbackup:
+        self.pending_sessions_dir = os.path.join(
+            self.local_save_dir, 'pending_sessions')
+
+        mice_directory = self.config.get('lampyr.mice_directory')
+        if os.path.exists(mice_directory) and self.enable_localbackup:
             self._backupmice()
-        if m_dir_present and self.enable_failsafe:
-            self._runfailsafecleanup()
+
+        if not self.enable_failsafe:
+            return
+
+        os.makedirs(self.pending_sessions_dir, exist_ok=True)
+        for pending_dir in sorted(Path(self.pending_sessions_dir).iterdir()):
+            if (not pending_dir.is_dir()
+                    or pending_dir.name.startswith('.')
+                    or not (pending_dir / 'manifest.json').is_file()):
+                continue
+            try:
+                self._publish_pending_session(pending_dir)
+                shutil.rmtree(pending_dir)
+                self._output_func(
+                    f'Recovered pending session {pending_dir.name}.')
+            except Exception as error:
+                self._output_func(
+                    f'Could not publish pending session {pending_dir.name}: '
+                    f'{error}')
 
     def _backupmice(self):
         """
@@ -165,113 +167,231 @@ class DataHandler(AbstractManager):
                     f'FAILED TO BACK UP {mid} due to UNEXPECTED ERROR')
                 self._output_func(str(e))
 
-    def _runfailsafecleanup(self):
-        """
-        Replay any session file copies that failed during a previous run.
-
-        Reads the ``data_failsafe`` extended config, which records sessions
-        whose files could not be moved to their target directory. For each
-        valid entry, the source files are copied to the intended target using
-        :func:`shutil.copy`.
-
-        Entries are skipped (with a warning via ``_output_func``) if they are
-        not a ``dict`` or are missing the required ``'fps'`` and ``'target'``
-        keys. In that case the user is instructed to inspect the remaining
-        files manually.
-
-        Returns
-        -------
-        None
-        """
-        if not self.enable_failsafe:
-            return
-        failsafe = self.config.load_extended_config('data_failsafe',
-                                                    default=self.CONFIG_FAILSAFE_DEFAULT)
-        failed_sessions = failsafe.get('sessions')
-        for session in failed_sessions:
-            if not isinstance(session, dict):
-                self._output_func(
-                    'DataHandler found an invalid session failsafe entry!!!')
-                continue
-            if not {'fps', 'target'} <= session:
-                self._output_func(
-                    'DataHandler found an invalid session failsafe entry!!!')
-                self._output_func(
-                    'You must manually inspect and register any remaining failed files.')
-                continue
-            for fp in session['fps']:
-                shutil.copy(fp, session['target'])
-
-    def _logfailure(self, failure_type: str, fps: list, target: str):
-        """
-        Append a failed file-operation entry to the failsafe config.
-
-        Records the source file paths and intended target directory so that
-        :meth:`_runfailsafecleanup` can retry the copy on the next startup.
-
-        Parameters
-        ----------
-        failure_type : str
-            Key in the failsafe config under which to log the failure
-            (e.g. ``'sessions'``).
-        fps : list of str
-            List of source file paths that could not be moved.
-        target : str or os.PathLike
-            The destination directory or path the files were intended for.
-
-        Returns
-        -------
-        None
-        """
-        failures = self.config_failsafe_data.get(failure_type, [])
-        failures.append({'fps': fps,
-                         'target': target})
-        self.config_failsafe_data.set(failure_type, failures)
-
     def savesession(self, session: Session = None, register=True):
         """
-        Save a session to the mouse's session history directory.
+        Save a session directly or through the local pending-session queue.
 
-        Writes the session files under
-        ``<mice_directory>/<mouseid>/lampyr_sessionhistory/`` via
-        :func:`~lampyr.files.savesessionfile`. Optionally registers the
-        session summary in the mouse's in-memory history via
-        :meth:`register_session_to_mouse`.
-
-        Parameters
-        ----------
-        session : Session, optional
-            The session to save. If ``None``, uses the active session from the
-            attached lampyr instance. Raises ``KeyError`` if no lampyr instance
-            is available.
-        register : bool, optional
-            If ``True`` (default) and a lampyr instance is attached, the
-            session is also registered to the current mouse's history.
-
-        Raises
-        ------
-        KeyError
-            If ``session`` is ``None`` and no lampyr instance is attached.
+        With the failsafe disabled, this retains the existing direct-save
+        behavior. With it enabled, a complete local copy is committed before
+        network publication is attempted.
 
         Returns
         -------
-        None
+        str
+            ``'published'`` when the shared copy is complete, or ``'pending'``
+            when a complete local copy remains queued. Local staging failures
+            are raised.
         """
         if session is None:
             if self.lampyr is None:
                 raise KeyError(
-                    'Mouse must be specified if outside lampyr instance')
+                    'Session must be specified if outside lampyr instance')
             session = self.lampyr.session
-        mouseid = session.mouseid
-        data_dir = self.config.get('lampyr.mice_directory')
-        dir_fp = os.path.join(data_dir,
-                              mouseid,
-                              'lampyr_sessionhistory')
-        savesessionfile(session, dir_fp)
-        self.collect_extended_data(session)
-        if register is True and self.lampyr is not None:
-            self.register_session_to_mouse(self.lampyr.mouse,
-                                           session)
+
+        should_register = bool(
+            register and self.lampyr is not None and self.lampyr.mouse is not None)
+        if not self.enable_failsafe:
+            data_dir = self.config.get('lampyr.mice_directory')
+            dir_fp = os.path.join(data_dir,
+                                  session.mouseid,
+                                  'lampyr_sessionhistory')
+            savesessionfile(session, dir_fp)
+            self.collect_extended_data(session)
+            if should_register:
+                self.register_session_to_mouse(self.lampyr.mouse, session)
+            return 'published'
+
+        pending_dir = self._stage_pending_session(session, should_register)
+        try:
+            published_history = self._publish_pending_session(pending_dir)
+        except Exception as error:
+            self._output_func(
+                f'Session {session.uniquesessionid} saved locally and is '
+                f'pending publication: {error}')
+            return 'pending'
+
+        try:
+            shutil.rmtree(pending_dir)
+        except Exception as error:
+            # Publication is complete. Leaving an idempotent queue entry is
+            # safer than treating the successfully saved session as failed.
+            self._output_func(
+                f'Session {session.uniquesessionid} was published, but its '
+                f'local pending copy could not be removed: {error}')
+
+        if should_register:
+            if (published_history is not None
+                    and self.lampyr.mouse.mouseid == session.mouseid):
+                self.lampyr.mouse.history = published_history
+            else:
+                self.register_session_to_mouse(self.lampyr.mouse, session)
+        return 'published'
+
+    def _stage_pending_session(self, session: Session, register: bool):
+        """Build and atomically commit a complete local pending session."""
+        os.makedirs(self.pending_sessions_dir, exist_ok=True)
+        final_dir = Path(self.pending_sessions_dir) / session.uniquesessionid
+        if final_dir.exists():
+            manifest, _, _, _ = self._read_pending_session(final_dir)
+            if manifest.get('register', True) != register:
+                raise ValueError(
+                    'Existing pending session has different registration behavior')
+            return final_dir
+
+        temp_dir = Path(tempfile.mkdtemp(
+            dir=self.pending_sessions_dir,
+            prefix=f'.{session.uniquesessionid}.'))
+        source_files = []
+        try:
+            savesessionfile(session, temp_dir)
+            json_path = temp_dir / f'{session.uniquesessionid}.lampyr.json'
+            h5_path = temp_dir / f'{session.uniquesessionid}.lampyr.h5'
+            if not json_path.is_file() or not h5_path.is_file():
+                raise RuntimeError('Session JSON and HDF5 were not both staged')
+
+            destinations = set()
+            for entry in session._extendeddata or []:
+                source = Path(entry['fp'])
+                relative = Path(entry['type']) / source.name
+                if relative.is_absolute() or '..' in relative.parts:
+                    raise ValueError(
+                        f'Extended-data type must be relative: {entry["type"]}')
+                if relative in destinations:
+                    raise ValueError(
+                        f'Duplicate extended-data destination: {relative}')
+                destinations.add(relative)
+                target = temp_dir / 'extended' / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target)
+                source_files.append(source)
+
+            staged_data = loadjson(json_path)
+            expected_extended = {
+                os.path.normpath(path)
+                for path in staged_data.get('extendeddata') or []
+            }
+            if expected_extended != {
+                    os.path.normpath(str(path)) for path in destinations}:
+                raise RuntimeError(
+                    'Staged extended data does not match session JSON')
+
+            savejson(temp_dir / 'manifest.json', {
+                'session_id': session.uniquesessionid,
+                'mouse_id': session.mouseid,
+                'register': register,
+            })
+            os.rename(temp_dir, final_dir)
+            temp_dir = None
+        finally:
+            if temp_dir is not None:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+
+        for source in source_files:
+            try:
+                source.unlink()
+            except FileNotFoundError:
+                pass
+            except Exception as error:
+                self._output_func(
+                    f'Could not remove staged extended-data source '
+                    f'{source}: {error}')
+        return final_dir
+
+    def _read_pending_session(self, pending_dir):
+        """Validate a committed pending session and return its metadata."""
+        pending_dir = Path(pending_dir)
+        manifest = loadjson(pending_dir / 'manifest.json')
+        session_id = manifest.get('session_id')
+        mouse_id = manifest.get('mouse_id')
+        if session_id != pending_dir.name or not mouse_id:
+            raise ValueError(
+                'Pending-session manifest does not match its directory')
+
+        json_path = pending_dir / f'{session_id}.lampyr.json'
+        h5_path = pending_dir / f'{session_id}.lampyr.h5'
+        if not json_path.is_file() or not h5_path.is_file():
+            raise FileNotFoundError('Pending session is missing JSON or HDF5')
+
+        session_data = loadjson(json_path)
+        if (session_data.get('uniquesessionid') != session_id
+                or session_data.get('mouseid') != mouse_id):
+            raise ValueError('Pending session JSON does not match its manifest')
+        for relative_name in session_data.get('extendeddata') or []:
+            relative_path = Path(relative_name)
+            if relative_path.is_absolute() or '..' in relative_path.parts:
+                raise ValueError(
+                    f'Extended-data path must be relative: {relative_name}')
+            if not (pending_dir / 'extended' / relative_path).is_file():
+                raise FileNotFoundError(
+                    f'Pending extended-data file is missing: {relative_name}')
+        return manifest, session_data, json_path, h5_path
+
+    def _publish_pending_session(self, pending_dir):
+        """Idempotently publish one committed pending session."""
+        pending_dir = Path(pending_dir)
+        manifest, session_data, json_path, h5_path = \
+            self._read_pending_session(pending_dir)
+        session_id = manifest['session_id']
+        mouse_id = manifest['mouse_id']
+
+        data_dir = Path(self.config.get('lampyr.mice_directory'))
+        for relative_name in session_data.get('extendeddata') or []:
+            relative_path = Path(relative_name)
+            source = pending_dir / 'extended' / relative_path
+            destination = (data_dir / mouse_id / 'lampyr_extendeddata'
+                           / session_id / relative_path)
+            self._publish_file(source, destination)
+
+        session_history_dir = data_dir / mouse_id / 'lampyr_sessionhistory'
+        self._publish_file(
+            h5_path, session_history_dir / h5_path.name)
+        self._publish_file(
+            json_path, session_history_dir / json_path.name)
+
+        published_history = None
+        if manifest.get('register', True) and mouse_id != 'UNKNOWN_MOUSE':
+            mouse = self.loadmouse(mouse_id)
+            self.register_session_to_mouse(mouse, session_data)
+            history_path = data_dir / mouse_id / f'{mouse_id}_history.lampyr.csv'
+            savecsv(history_path, mouse.history)
+            published_history = mouse.history
+        return published_history
+
+    def _publish_file(self, source, destination):
+        """Publish one file atomically without overwriting a conflict."""
+        source = Path(source)
+        destination = Path(destination)
+        source_hash = hash_file(source)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.exists():
+            if hash_file(destination) == source_hash:
+                return
+            raise FileExistsError(
+                f'Refusing to overwrite conflicting file {destination}')
+
+        descriptor, temp_name = tempfile.mkstemp(
+            dir=destination.parent,
+            prefix=f'.{destination.name}.',
+            suffix='.tmp')
+        os.close(descriptor)
+        temp_path = Path(temp_name)
+        try:
+            shutil.copy2(source, temp_path)
+            if hash_file(temp_path) != source_hash:
+                raise IOError(f'Hash mismatch while copying {destination}')
+            if destination.exists():
+                if hash_file(destination) == source_hash:
+                    return
+                raise FileExistsError(
+                    f'Refusing to overwrite conflicting file {destination}')
+            os.replace(temp_path, destination)
+            temp_path = None
+        finally:
+            if temp_path is not None:
+                try:
+                    temp_path.unlink()
+                except FileNotFoundError:
+                    pass
 
     def loadsession(self, sessionid: str, mouseid: str = None):
         """
@@ -416,38 +536,39 @@ class DataHandler(AbstractManager):
                                 mouseid)
         return loadmousefile(mouseid, data_dir)
 
-    def register_session_to_mouse(self, mouse: Mouse, session: Session):
-        """
-        Append a session summary entry to a mouse's in-memory history.
+    def _session_history_entry(self, session):
+        """Build a mouse-history row from a Session or staged JSON mapping."""
+        def get_value(name):
+            if isinstance(session, dict):
+                return session.get(name)
+            return getattr(session, name)
 
-        Extracts key performance metrics from the session and appends them as
-        a dict to ``mouse.history``. The timestamp is also decomposed into
-        year, month, and day fields for convenient downstream filtering.
-
-        Parameters
-        ----------
-        mouse : Mouse
-            The Mouse object whose history will be updated.
-        session : Session
-            The completed session from which to extract the summary entry.
-
-        Returns
-        -------
-        None
-        """
-        sessionentry = {}
-        dt = datetime.fromtimestamp(session.starttime).astimezone()
-        sessionentry['sessionid'] = session.uniquesessionid
-        sessionentry['starttime'] = session.starttime
-        sessionentry['year'] = dt.year
-        sessionentry['month'] = dt.month
-        sessionentry['day'] = dt.day
-        sessionentry['rootslug'] = session.segments.get(session.root, {}
-                                                        ).get('slug', 'NA')
+        starttime = get_value('starttime')
+        dt = datetime.fromtimestamp(starttime).astimezone()
+        segments = get_value('segments') or {}
+        root = get_value('root')
+        sessionentry = {
+            'sessionid': get_value('uniquesessionid'),
+            'starttime': starttime,
+            'year': dt.year,
+            'month': dt.month,
+            'day': dt.day,
+            'rootslug': segments.get(root, {}).get('slug', 'NA'),
+        }
         for entry in ["merit", "demerit", "duration", "trial", "rewards",
                       "abstention", "participation"]:
-            sessionentry[entry] = getattr(session, entry)
-        mouse.history.append(sessionentry)
+            sessionentry[entry] = get_value(entry)
+        return sessionentry
+
+    def register_session_to_mouse(self, mouse: Mouse, session: Session):
+        """Insert or replace a session row in a mouse's in-memory history."""
+        sessionentry = self._session_history_entry(session)
+        for index, existing in enumerate(mouse.history):
+            if existing.get('sessionid') == sessionentry['sessionid']:
+                mouse.history[index] = sessionentry
+                break
+        else:
+            mouse.history.append(sessionentry)
 
     def collect_extended_data(self, session: Session):
         if session._extendeddata is None:
