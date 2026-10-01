@@ -19,6 +19,7 @@ import shutil
 import csv
 import time
 import hashlib
+import tempfile
 
 from typing import Union, List
 
@@ -75,10 +76,11 @@ def loadjson(fp):
 
 def savecsv(fp, data: List[dict]):
     """
-    Write a list of dicts to a CSV file.
+    Atomically write a list of dicts to a CSV file.
 
-    All keys found across all dicts are used as column headers.  Missing
-    values are left blank.
+    All keys found across all dicts are used as column headers. Missing
+    values are left blank. The complete CSV is written beside the target and
+    then installed with :func:`os.replace`.
 
     Parameters
     ----------
@@ -93,10 +95,31 @@ def savecsv(fp, data: List[dict]):
             if key not in all_keys:
                 all_keys.append(key)
 
-    with open(fp, 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=all_keys)
-        writer.writeheader()
-        writer.writerows(data)
+    target_dir = os.path.dirname(os.path.abspath(fp))
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+                mode='w',
+                encoding='utf-8',
+                newline='',
+                dir=target_dir,
+                prefix=f'.{os.path.basename(fp)}.',
+                suffix='.tmp',
+                delete=False) as f:
+            temp_path = f.name
+            writer = csv.DictWriter(f, fieldnames=all_keys)
+            writer.writeheader()
+            writer.writerows(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, fp)
+        temp_path = None
+    finally:
+        if temp_path is not None:
+            try:
+                os.remove(temp_path)
+            except FileNotFoundError:
+                pass
         
 def loadcsv(fp):
     """
@@ -329,20 +352,26 @@ def savesessionfile(session: Session,
         List of file paths to the saved files (HDF5 and JSON).
     """
     os.makedirs(dir_fp, exist_ok=True)
-    rigdata = session.rigdata
+    rigdata = session.rigdata or {}
     np_rigdata = {}
     fps = []
-    if rigdata is not None:
-        for reporttype, reports in rigdata.items():
-            np_rigdata[reporttype] = {}
-            for datalabel, data in reports.items():
-                np_rigdata[reporttype][datalabel] = np.asarray(data)
-        fp = saveh5(os.path.join(dir_fp, f'{session.uniquesessionid}.lampyr.h5'),
-                    np_rigdata)
-        if fp is not None:
-            fps.append(fp)
+    for reporttype, reports in rigdata.items():
+        np_rigdata[reporttype] = {}
+        for datalabel, data in reports.items():
+            np_rigdata[reporttype][datalabel] = np.asarray(data)
+    fp = saveh5(os.path.join(dir_fp, f'{session.uniquesessionid}.lampyr.h5'),
+                np_rigdata)
+    if fp is not None:
+        fps.append(fp)
+
     data = asdict(session)
     data['rigdata'] = None
+    extendeddata = data.pop('_extendeddata', None)
+    if extendeddata is not None:
+        data['extendeddata'] = [
+            os.path.join(entry['type'], os.path.basename(entry['fp']))
+            for entry in extendeddata
+        ]
     fp = savejson(os.path.join(dir_fp, f'{session.uniquesessionid}.lampyr.json'),
                   data)
     if fp is not None:

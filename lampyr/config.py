@@ -7,6 +7,7 @@ Created on Mon Aug 25 19:47:06 2025
 from lampyr.version import __version__
 
 import os, json, time
+import tempfile
 from copy import deepcopy
 
 class ConfigFile:
@@ -124,15 +125,51 @@ class ConfigFile:
                 current = current[key]
             else:
                 raise KeyError(f"Key path not found: {key_path}")
-        current[keys[-1]] = value
-        self.save()
+        final_key = keys[-1]
+        key_existed = final_key in current
+        previous_value = deepcopy(current[final_key]) if key_existed else None
+        current[final_key] = value
+        try:
+            self.save()
+        except Exception:
+            if key_existed:
+                current[final_key] = previous_value
+            else:
+                current.pop(final_key, None)
+            raise
     
     def save(self):
         """
-        Persist the current configuration to the backing JSON file.
+        Atomically persist the current configuration to the backing JSON file.
+
+        The complete JSON document is written and flushed to a temporary file
+        in the destination directory before :func:`os.replace` swaps it into
+        place.  A failed write therefore leaves the previous configuration
+        file untouched.
         """
-        with open(self._syncfp, 'w') as file:
-            json.dump(self.to_dict(), file, indent = 2)
+        target_dir = os.path.dirname(os.path.abspath(self._syncfp))
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode='w',
+                encoding='utf-8',
+                dir=target_dir,
+                prefix=f'.{os.path.basename(self._syncfp)}.',
+                suffix='.tmp',
+                delete=False,
+            ) as file:
+                temp_path = file.name
+                json.dump(self.to_dict(), file, indent=2)
+                file.flush()
+                os.fsync(file.fileno())
+            os.replace(temp_path, self._syncfp)
+            temp_path = None
+        finally:
+            if temp_path is not None:
+                try:
+                    os.remove(temp_path)
+                except FileNotFoundError:
+                    pass
     
     def to_dict(self):
         """
@@ -165,7 +202,14 @@ class Config(ConfigFile):
             'mice_directory': 'N:/SHARED/Maxwell_Lampyr_MouseData',
             'plugin_folder': None,
             'enable_saveload_failsafe': True,
-            'enable_local_mouse_backups' : True
+            'enable_local_mouse_backups' : True,
+            'enable_automated_tasks': False,
+            'automated_task': {
+                'task': None,
+                'start_time': None,
+                'end_time': None,
+                'last_run_window': None
+            }
         },
         'rig': {
             'name': None,
@@ -174,7 +218,8 @@ class Config(ConfigFile):
             'configuration' : {}, #implicit area for persistant rig data
             'calibrated': 0, #To be removed
             'configured': False, #To be removed
-            'sipper_calib': 10000 #To be removed
+            'sipper_calib': 10000, #To be removed
+            'handedness': 1 #Kludge to enable rig handedness in short term
         },
         'notifications': {}
     }

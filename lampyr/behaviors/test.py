@@ -75,6 +75,16 @@ class RotaryTest(Trial):
         self.trigger_event('response')
         self.wait(5)
 
+@dataclass
+class SwapHandedness(Task):
+    def setup(self):
+        handedness = self.lampyr.config.get('rig.handedness')
+        self.log_notice(f'Handedness is now {-handedness}')
+        self.log_notice('1 = LEFT, -1 = RIGHT')
+        self.lampyr.config.set('rig.handedness', -handedness)
+    
+    def loop(self):
+        self.finish()
 
 @dataclass
 class RotaryTestTask(Task):

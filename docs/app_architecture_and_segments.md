@@ -17,7 +17,7 @@ Core package areas:
 - `lampyr/behaviors/` — concrete behavior implementations.
 - `lampyr/interfaces/click_cli/` — Click CLI.
 - `lampyr/interfaces/textual_tui/` — Textual GUI/TUI.
-- `lampyr/analysis/` — session, mouse, colony, records, traces, and dataset helpers.
+- `lampyr/analysis/` — colony, records, traces, dataset, segments, time, and longtidy helpers.
 
 ## `Lampyr`: the application object
 
@@ -215,7 +215,9 @@ self.wait(seconds)
 self.waitfor(condition, fallback_value=None, timeout=None, poll_interval=0.05)
 ```
 
-`waitfor()` polls a condition until it returns a truthy value or a timeout occurs.
+`waitfor()` polls a condition until it returns a truthy value or a timeout
+occurs. It also accepts `while_waiting` (a callback invoked periodically while
+waiting) and `while_waiting_interval` (seconds between those callbacks).
 
 ## Creating a new task
 
@@ -532,6 +534,7 @@ Segments that inherit rig context can call rig components. For the Bandit rig, c
 - `self.rig.laser.begin()`
 - `self.rig.laser.stop()`
 - `self.rig.laser.rampdown(ramp_ms)`
+- `self.rig.initialize_mousecam()`
 
 Always design segment code so the root segment can finish and dump cleanly. Avoid swallowing `KeyboardInterrupt` unless you re-raise it after cleanup.
 

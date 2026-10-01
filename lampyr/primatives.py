@@ -158,6 +158,7 @@ class Session:
     starttime: float = field(default_factory=time.time)
     endtime: float = None
     uniquesessionid: str = field(default_factory=lambda: uniqueid('session'))
+    metadata: dict = field(default_factory=dict)
 
     # Mouseid
     mouseid: str = None

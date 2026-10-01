@@ -47,6 +47,9 @@ Servo wheelLock;
 
 // Laser
 bool rampingDown = false;
+bool rampPending = false;
+uint32_t rampRequestMs = 0;
+uint32_t rampDelayMs = 0;
 uint32_t rampStartMs = 0;
 uint32_t rampDurationMs = 0;
 int rampStartPWM = 255;
@@ -257,6 +260,7 @@ void executeCommand(char cmd)
         case 'z': // Start "zap" protocol for laser stim
         {
             rampingDown = false;
+            rampPending = false;
             analogWrite(LASERPIN, 255);
             break;
         }
@@ -264,6 +268,7 @@ void executeCommand(char cmd)
         case 'x': // Hardcutoff to laser stim
         {
             rampingDown = false;
+            rampPending = false;
             analogWrite(LASERPIN, 0);
             break;
         }
@@ -271,12 +276,21 @@ void executeCommand(char cmd)
         case 'c': // Slow rampdown to laser stim
         {
             String str = Serial.readStringUntil('\n');
+            int comma = str.indexOf(',');
+            String durationStr = comma >= 0 ? str.substring(0, comma) : str;
+            String delayStr = comma >= 0 ? str.substring(comma + 1) : "0";
 
-            rampDurationMs = str.toInt() * 1000UL;
-            rampStartMs = millis();
-            rampStartPWM = 255;
-
-            rampingDown = true;
+            rampDurationMs = durationStr.toInt() * 1000UL;
+            rampDelayMs = max(0L, delayStr.toInt());
+            rampRequestMs = millis();
+            rampingDown = false;
+            rampPending = rampDelayMs > 0;
+            if (!rampPending)
+            {
+                rampStartMs = millis();
+                rampStartPWM = 255;
+                rampingDown = true;
+            }
 
             break;
         }
@@ -445,6 +459,14 @@ void loop()
     // -------------------------------------------------------------
     // Laser rampdown
     // -------------------------------------------------------------
+    if (rampPending && millis() - rampRequestMs >= rampDelayMs)
+    {
+        rampPending = false;
+        rampStartMs = millis();
+        rampStartPWM = 255;
+        rampingDown = true;
+    }
+
     if (rampingDown)
     {
         uint32_t elapsed = millis() - rampStartMs;

@@ -66,6 +66,9 @@ bool camOnline = false;
 
 // Laser
 bool rampingDown = false;
+bool rampPending = false;
+uint32_t rampRequestUs = 0;
+uint32_t rampDelayUs = 0;
 uint32_t rampStartUs = 0;
 uint32_t rampDurationUs = 0;
 int rampStartPWM = 255;
@@ -319,6 +322,7 @@ void executeCommand(char cmd)
         case 'z': // Start "zap" protocol for laser stim
         {
             rampingDown = false;
+            rampPending = false;
             analogWrite(LASERPIN, 255);
             break;
         }
@@ -326,6 +330,7 @@ void executeCommand(char cmd)
         case 'x': // Hardcutoff to laser stim
         {
             rampingDown = false;
+            rampPending = false;
             analogWrite(LASERPIN, 0);
             break;
         }
@@ -333,13 +338,23 @@ void executeCommand(char cmd)
         case 'c': // Slow rampdown to laser stim
         {
             String str = Serial.readStringUntil('\n');
+            int comma = str.indexOf(',');
+            String durationStr = comma >= 0 ? str.substring(0, comma) : str;
+            String delayStr = comma >= 0 ? str.substring(comma + 1) : "0";
+            long delayMs = delayStr.toInt();
 
-            rampDurationUs = max(1UL, str.toInt() * 1000UL);
-            rampStartUs = micros();
-            rampStartPWM = 255;
-            pwm_last = -1;
-
-            rampingDown = true;
+            rampDurationUs = max(1UL, durationStr.toInt() * 1000UL);
+            rampDelayUs = delayMs > 0 ? (uint32_t)delayMs * 1000UL : 0;
+            rampRequestUs = micros();
+            rampingDown = false;
+            rampPending = rampDelayUs > 0;
+            if (!rampPending)
+            {
+                rampStartUs = micros();
+                rampStartPWM = 255;
+                pwm_last = -1;
+                rampingDown = true;
+            }
 
             break;
         }
@@ -555,6 +570,15 @@ void loop()
     // -------------------------------------------------------------
     // Laser rampdown
     // -------------------------------------------------------------
+    if (rampPending && micros() - rampRequestUs >= rampDelayUs)
+    {
+        rampPending = false;
+        rampStartUs = micros();
+        rampStartPWM = 255;
+        pwm_last = -1;
+        rampingDown = true;
+    }
+
     if (rampingDown)
     {
         uint32_t elapsed = micros() - rampStartUs;
