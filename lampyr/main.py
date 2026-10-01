@@ -174,19 +174,47 @@ class Lampyr:
 
     def close(self):
         """
-        Gracefully shut down Lampyr: disconnect rig, save session and mouse.
+        Attempt every shutdown step, even when an earlier operation fails.
 
-        Safe to call even if the rig was never connected or no session was
-        started.  Mouse data is backed up after saving to ensure the shared
-        directory is up to date.
+        A failsafe save reports either ``'published'`` or ``'pending'``.
+        Local save failures and other shutdown errors are re-raised only after
+        the remaining cleanup operations have been attempted.
         """
+        errors = []
+        save_status = None
+
         if self.rig is not None:
-            self.rigmanager.disconnect()
+            try:
+                self.rigmanager.disconnect()
+            except Exception as error:
+                self._output_func(f'Rig disconnection failed: {error}')
+                errors.append(error)
+
         if self.session is not None:
-            self.datamanager.savesession()
+            try:
+                save_status = self.datamanager.savesession()
+                if save_status == 'pending':
+                    self._output_func(
+                        'Session saved locally and is pending publication.')
+            except Exception as error:
+                self._output_func(f'Session save failed: {error}')
+                errors.append(error)
+
         if self.mouse is not None:
-            self.mousemanager.save() # Important that mouse is saved after session
-            self.datamanager._backupmice()
+            try:
+                self.mousemanager.save()
+            except Exception as error:
+                self._output_func(f'Mouse save failed: {error}')
+                errors.append(error)
+            try:
+                self.datamanager._backupmice()
+            except Exception as error:
+                self._output_func(f'Mouse backup failed: {error}')
+                errors.append(error)
+
+        if errors:
+            raise errors[0]
+        return save_status
 
 
 if __name__ == '__main__':
