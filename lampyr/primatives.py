@@ -12,6 +12,9 @@ from typing import List
 import random
 
 
+SYSTEM_MOUSE_IDS = frozenset({"UNKNOWN_MOUSE", "AUTOMATION"})
+
+
 def uniqueid(type, name=None):
     """
     Generate a unique identifier string with an optional name component.

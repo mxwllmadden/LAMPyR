@@ -13,7 +13,7 @@ import pickle
 import json
 import glob
 from dataclasses import is_dataclass, asdict, fields
-from lampyr.primatives import Session, Mouse
+from lampyr.primatives import Mouse, Session, SYSTEM_MOUSE_IDS
 from lampyr.config import Config
 import shutil
 import csv
@@ -410,9 +410,12 @@ def savemousefile(mouse: Mouse,
     """
     Save a Mouse object in Lampyr format within a specific directory.
 
-    This function saves two files:
+    This function saves two files for regular mice:
     - A `.lampyr.json` file containing mouse metadata.
     - A `.lampyr.csv` file containing mouse session history (if available).
+
+    System mouse identities only have their directory created; no mouse files
+    are written.
 
     Parameters
     ----------
@@ -427,6 +430,8 @@ def savemousefile(mouse: Mouse,
         A list of file paths to the saved files (JSON and optionally CSV).
     """
     os.makedirs(dir_fp, exist_ok=True)
+    if mouse.mouseid in SYSTEM_MOUSE_IDS:
+        return []
 
     mouse_json_fp = os.path.join(dir_fp, f'{mouse.mouseid}_mouse.lampyr.json')
     mouse_csv_fp = os.path.join(dir_fp, f'{mouse.mouseid}_history.lampyr.csv')
@@ -436,7 +441,7 @@ def savemousefile(mouse: Mouse,
 
     savejson(mouse_json_fp, mouse_metadata)
 
-    if mouse.mouseid == 'UNKNOWN_MOUSE' or mouse_history is None:
+    if mouse_history is None:
         return [mouse_json_fp]
 
     savecsv(mouse_csv_fp, mouse_history)
@@ -471,7 +476,7 @@ def loadmousefile(mouseid: str,
     Mouse
         A reconstructed Mouse object with metadata and optional session history.
     """
-    if mouseid == 'UNKNOWN_MOUSE':
+    if mouseid in SYSTEM_MOUSE_IDS:
         return Mouse(mouseid=mouseid)
     
     mouse_json_fp = os.path.join(dir_fp, f'{mouseid}_mouse.lampyr.json')

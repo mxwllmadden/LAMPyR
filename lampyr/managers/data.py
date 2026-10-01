@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 import json
 import glob
-from lampyr.primatives import Session, Mouse
+from lampyr.primatives import Mouse, Session, SYSTEM_MOUSE_IDS
 import shutil
 import csv
 import hashlib
@@ -123,7 +123,8 @@ class DataHandler(AbstractManager):
         present, the history CSV to the local AppData backup directory. Files
         that are already up to date (matching hash) are skipped silently.
 
-        Mice that have no history CSV on disk (e.g. ``UNKNOWN_MOUSE``) are
+        System identities without history CSVs (``UNKNOWN_MOUSE`` and
+        ``AUTOMATION``) are
         handled gracefully — only the JSON is backed up.
 
         Per-mouse errors are caught and reported via ``_output_func`` without
@@ -314,7 +315,10 @@ class DataHandler(AbstractManager):
 
     def mouseexists(self, mouseid):
         """
-        Check whether a mouse has a saved metadata file on disk.
+        Check whether a mouse exists on disk.
+
+        System identities exist when their directory exists; regular mice
+        require a saved metadata file.
 
         Parameters
         ----------
@@ -324,12 +328,17 @@ class DataHandler(AbstractManager):
         Returns
         -------
         bool
-            ``True`` if the mouse's ``_mouse.lampyr.json`` file exists in the
-            configured mice directory, ``False`` otherwise.
+            ``True`` if the system identity directory or regular mouse
+            metadata file exists, ``False`` otherwise.
         """
-        return os.path.exists(os.path.join(self.config.get('lampyr.mice_directory'),
-                                           mouseid,
-                                           f'{mouseid}_mouse.lampyr.json'))
+        mouse_dir = os.path.join(
+            self.config.get('lampyr.mice_directory'), mouseid
+        )
+        if mouseid in SYSTEM_MOUSE_IDS:
+            return os.path.isdir(mouse_dir)
+        return os.path.exists(
+            os.path.join(mouse_dir, f'{mouseid}_mouse.lampyr.json')
+        )
 
     def mouselist(self) -> List[str]:
         """
@@ -483,7 +492,7 @@ class DataHandler(AbstractManager):
             print(f'Reconstructing {mouse} history')
             mouse_obj = self.loadmouse(mouse)
             mouse_obj.history = []
-            if mouse == 'UNKNOWN_MOUSE':
+            if mouse in SYSTEM_MOUSE_IDS:
                 continue
             sessionlist = self._mouse_session_list_from_files(mouse)
             print(f'Processing {len(sessionlist)} sessions')

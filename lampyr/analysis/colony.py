@@ -8,6 +8,7 @@ from typing import Tuple, List
 
 from lampyr.managers.abstract import AbstractManager
 from lampyr.managers.data import DataHandler
+from lampyr.primatives import SYSTEM_MOUSE_IDS
 
 
 class RetreiveSessions(AbstractManager):
@@ -236,7 +237,7 @@ class RetreiveMice(AbstractManager):
         mouseids, _ = self.data.mouselist()
         result = []
         for mid in mouseids:
-            if mid == 'UNKNOWN_MOUSE':
+            if mid in SYSTEM_MOUSE_IDS:
                 continue
             mouse = self.data.loadmouse(mid)
             if self._mouse_passes_filter(mouse, paradigm, slug, stage,

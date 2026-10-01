@@ -10,6 +10,7 @@ from time import time
 from typing import Callable, List, Tuple
 
 from lampyr.managers.data import DataHandler
+from lampyr.primatives import SYSTEM_MOUSE_IDS
 
 
 class MouseQuery:
@@ -51,7 +52,7 @@ class MouseQuery:
         result = []
 
         for mouseid in mouseids:
-            if mouseid == "UNKNOWN_MOUSE":
+            if mouseid in SYSTEM_MOUSE_IDS:
                 continue
 
             mouse = self.colony.load_mouse(mouseid)
