@@ -185,6 +185,16 @@ def rig_info(lampyr):
 @click.pass_obj
 def configure(lampyr):
     actions.configure_rig(lampyr)
+
+@rig.command(name = 'select')
+@click.pass_obj
+def rig_select(lampyr):
+    actions.select_rig(lampyr)
+
+@rig.command(name = 'rename')
+@click.pass_obj
+def rig_rename(lampyr):
+    actions.rename_rig(lampyr)
         
 @rig.command()
 @click.pass_obj
