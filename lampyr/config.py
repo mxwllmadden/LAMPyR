@@ -7,6 +7,7 @@ Created on Mon Aug 25 19:47:06 2025
 from lampyr.version import __version__
 
 import os, json, time
+import socket
 import tempfile
 from copy import deepcopy
 
@@ -114,7 +115,7 @@ class ConfigFile:
         ----------
         key_path : str
             Dot-separated path into the config dict
-            (e.g. ``'rig.calibrated'``).
+            (e.g. ``'rig.name'``).
         value : object
             Value to store at ``key_path``.
 
@@ -219,14 +220,9 @@ class Config(ConfigFile):
             }
         },
         'rig': {
-            'name': None,
-            'rig_type' : 'BanditRig',
-            'rig_type_last_load' : None, #not implemented but will eventually force configuration
+            'name': socket.gethostname(),
+            'rig_type' : 'NullRig',
             'configuration' : {}, #implicit area for persistant rig data
-            'calibrated': 0, #To be removed
-            'configured': False, #To be removed
-            'sipper_calib': 10000, #To be removed
-            'handedness': 1 #Kludge to enable rig handedness in short term
         },
         'notifications': {}
     }
@@ -261,6 +257,21 @@ class Config(ConfigFile):
         clone._config = deepcopy(self._config)
         return clone
     
+    @property
+    def rigconfig(self):
+        """
+        Alias for the nested ``rig.configuration`` dictionary.
+
+        Provides a handle for rig-specific persistent data without polluting
+        the top-level ``rig.*`` keys. Assigning to it replaces and persists
+        the whole dictionary.
+        """
+        return self._config['rig']['configuration']
+
+    @rigconfig.setter
+    def rigconfig(self, value):
+        self.set('rig.configuration', value)
+
     def load_extended_config(self, key, default = {}):
         """
         Load (or create) a secondary config file from the local AppData directory.

@@ -1,6 +1,8 @@
 """Hardware-free automation rig and automation-only components."""
 
+import json
 from pathlib import Path
+from urllib.parse import quote
 
 from lampyr.rigs.abstract import AbstractHardwareRig, Component
 from lampyr.rigs.services import AutomationCoordinationService
@@ -25,10 +27,10 @@ class JobReservation(Component):
         return self.coordination.release_file(lease)
 
 
-class ColonyAccess(Component):
-    """Expose colony session discovery through the Colony API."""
+class SessionJobTracker(Component):
+    """Find candidate sessions and record completed automation job runs."""
 
-    def setup(self, config=None):
+    def setup(self, config, coordination):
         from lampyr.analysis.colony import Colony
         from lampyr.config import Config
 
@@ -38,14 +40,53 @@ class ColonyAccess(Component):
             config = Config(sync=False)
         config.set("lampyr.enable_saveload_failsafe", False)
         self.colony = Colony(config=config)
+        self.coordination = coordination
+        self.runs_dir = coordination.automation_dir / ".runs"
 
-    def candidate_sessions(self):
-        """Return sorted ``(mouse_id, session_id)`` pairs from disk."""
-        return sorted(
+    def candidate_sessions(self, jobs):
+        """Return ``(mouse_id, session_id)`` pairs still needing a job run.
+
+        ``jobs`` is a sequence of ``(jobid, version)`` tuples. A session is
+        excluded only when it has a valid run marker for every job. A marker
+        is invalid when its recorded version is older than the requested one
+        (i.e. the job's version has since been incremented).
+        """
+        all_sessions = sorted(
             (mid, sid)
             for mid in self.colony.mice.get_mice()
             for sid in self.colony.sessions.retrieve(mid)
         )
+        return [
+            (mid, sid)
+            for mid, sid in all_sessions
+            if not self._is_run_through(sid, jobs)
+        ]
+
+    def mark_completed(self, jobid, version, session_id):
+        """Write a session/job completion marker under the coordination guard."""
+        marker = self.runs_dir / session_id / f"{quote(str(jobid), safe='')}.json"
+        with self.coordination.gate():
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            temporary = marker.with_suffix(".tmp")
+            try:
+                temporary.write_text(json.dumps({"version": version}), encoding="utf-8")
+                temporary.replace(marker)
+            finally:
+                temporary.unlink(missing_ok=True)
+
+    def _is_run_through(self, session_id, jobs):
+        return all(self._is_processed(jobid, version, session_id)
+                   for jobid, version in jobs)
+
+    def _is_processed(self, jobid, version, session_id):
+        marker = self.runs_dir / session_id / f"{quote(str(jobid), safe='')}.json"
+        if not marker.is_file():
+            return False
+        try:
+            record = json.loads(marker.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        return isinstance(record, dict) and record.get("version", -1) >= version
 
 
 class AutomationRig(AbstractHardwareRig):
@@ -60,7 +101,7 @@ class AutomationRig(AbstractHardwareRig):
         coordination = AutomationCoordinationService(automation_dir)
         self.register_service("coordination", coordination)
         self.register_component("jobreservation", JobReservation(coordination))
-        self.register_component("colonyaccess", ColonyAccess(self.config))
+        self.register_component("sessionjobtracker", SessionJobTracker(self.config, coordination))
 
     def start(self):
         """Enable automation coordination without initializing hardware."""
@@ -81,12 +122,6 @@ class AutomationRig(AbstractHardwareRig):
             "RIG_NAME": "AUTOMATION",
         }
         return properties, {}, []
-
-    def is_calibrated(self):
-        return True
-
-    def is_configured(self):
-        return True
 
     def calibrate(self):
         return True

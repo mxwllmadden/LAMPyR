@@ -6,6 +6,7 @@ Created on Thu Jun 12 15:21:44 2025
 """
 
 import click
+import socket
 import time
 from lampyr import Lampyr
 
@@ -92,32 +93,64 @@ def start_rig(lampyr : Lampyr):
     Abort
         If the rig is not configured or calibration is more than 12 hours old.
     """
-    if lampyr.config.get('rig.configured') < 1:
+    rig_cls = lampyr.rigmanager.rig_cls
+    if not rig_cls.is_configured(lampyr.config):
         click.echo('Command aborted because rig is not configured')
         click.echo('\nUse "lampyr rig configure" to configure rig')
         raise Abort()
-    if lampyr.config.get('rig.calibrated') < time.time() - (5*24*60*60):
+    if not rig_cls.is_calibrated(lampyr.config):
         click.echo('Command aborted because rig is not calibrated')
         click.echo('\nUse "lampyr rig calibrate" to calibrate rig')
         raise Abort()
     lampyr.rigmanager.connect()
     return True
 
+def _prompt_config_field(field, spec, current):
+    """Prompt for a single configuration value using its spec."""
+    prompt = spec.get('prompt', field)
+    choices = spec.get('choices')
+    default = spec.get('default') if current is None else current
+    if choices is not None:
+        value = click.prompt(
+            prompt,
+            type=click.Choice([str(c) for c in choices]),
+            default=str(default) if default is not None else None,
+        )
+        return spec.get('type', str)(value)
+    return click.prompt(prompt, type=spec.get('type', str), default=default)
+
 def configure_rig(lampyr : Lampyr):
     """
-    Interactively configure the rig name and mark it as configured.
+    Walk the active rig's configuration fields, storing them in ``rig.configuration``.
 
-    Prompts the user for a rig name, then stores it in
-    ``config['rig.name']`` and sets ``config['rig.configured']`` to 1.
+    The rig name is no longer prompted here; use ``lampyr rig rename`` to set
+    it explicitly (it defaults to the computer hostname).
 
     Parameters
     ----------
     lampyr : Lampyr
         Active Lampyr instance.
     """
-    name = input('Rig Name: ')
+    if not lampyr.config.get('rig.name'):
+        lampyr.config.set('rig.name', socket.gethostname())
+    rig_cls = lampyr.rigmanager.rig_cls
+    for field, spec in rig_cls.CONFIGURATION.items():
+        current = lampyr.config.rigconfig.get(field)
+        lampyr.config.rigconfig[field] = _prompt_config_field(field, spec, current)
+    lampyr.config.save()
+
+def rename_rig(lampyr : Lampyr):
+    """
+    Prompt for and store a new rig name.
+
+    Parameters
+    ----------
+    lampyr : Lampyr
+        Active Lampyr instance.
+    """
+    current = lampyr.config.get('rig.name') or socket.gethostname()
+    name = click.prompt('Rig Name', default=current)
     lampyr.config.set('rig.name', name)
-    lampyr.config.set('rig.configured', 1)
 
 def select_rig(lampyr : Lampyr):
     """

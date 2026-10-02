@@ -23,6 +23,11 @@ def all_rig_definitions():
     return rigs
 
 class AbstractHardwareRig(ABC):
+    #: Required configuration values: field name -> spec.
+    CONFIGURATION = {}
+    #: Required calibration values: field name -> spec.
+    CALIBRATION = {}
+
     def __init__(self, *args, config = None, **kwargs):
         self.interfaces = {}
         self.components = {}
@@ -34,13 +39,36 @@ class AbstractHardwareRig(ABC):
     def setup(self, *args, **kwargs):
         pass
     
-    @abstractmethod
-    def is_calibrated(self):
-        pass
+    def config_value(self, key, default=None):
+        """Read a value from this rig's ``rig.configuration`` dict."""
+        rigconfig = getattr(self.config, 'rigconfig', None)
+        if rigconfig is None:
+            return default
+        return rigconfig.get(key, default)
     
-    @abstractmethod
-    def is_configured(self):
-        pass
+    @classmethod
+    def is_calibrated(cls, config):
+        """True when ``config`` holds every value in :attr:`CALIBRATION`."""
+        return cls._required_present(config, cls.CALIBRATION)
+
+    @classmethod
+    def is_configured(cls, config):
+        """True when ``config`` holds every value in :attr:`CONFIGURATION`."""
+        return cls._required_present(config, cls.CONFIGURATION)
+
+    @staticmethod
+    def _required_present(config, required):
+        rigconfig = getattr(config, 'rigconfig', None)
+        if rigconfig is None:
+            return not required
+        for field, spec in required.items():
+            value = rigconfig.get(field)
+            if value is None:
+                return False
+            choices = spec.get('choices')
+            if choices is not None and value not in choices:
+                return False
+        return True
     
     @abstractmethod
     def calibrate(self):
@@ -113,6 +141,28 @@ class AbstractHardwareRig(ABC):
                     accumulated_array_data[rtype] = interface.data.reports[reporttype]
                     accumulated_json_data[interfacename]['REPORTS'].append(rtype)
         return accumulated_json_data, accumulated_array_data, extended_data_files
+
+
+class NullRig(AbstractHardwareRig):
+    """A rig that does nothing and exposes no components or interfaces."""
+
+    def setup(self):
+        pass
+
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+    def disconnect(self):
+        pass
+
+    def calibrate(self):
+        return True
+
+    def configure(self):
+        return True
 
 
 class InterfaceData:

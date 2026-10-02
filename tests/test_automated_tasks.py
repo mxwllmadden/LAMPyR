@@ -35,12 +35,23 @@ class FakeDataManager:
         self.touches += 1
 
 
+class FakeRig:
+    @classmethod
+    def is_calibrated(cls, config):
+        return config.get("rig.calibrated") > 0
+
+    @classmethod
+    def is_configured(cls, config):
+        return True
+
+
 class FakeHeartbeatApp:
     def __init__(self, config_values, behaviors=None, screens=None):
         self.lampyr = SimpleNamespace(
             config=FakeConfig(config_values),
             behaviors=behaviors or {},
             datamanager=FakeDataManager(),
+            rigmanager=SimpleNamespace(rig_cls=FakeRig),
         )
         self.screen_stack = screens or [tui.MainScreen()]
         self.screen = self.screen_stack[-1]

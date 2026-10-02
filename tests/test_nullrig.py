@@ -15,8 +15,8 @@ def test_null_rig_has_no_components_or_interfaces():
 
 def test_null_rig_is_trivially_calibrated_and_configured():
     rig = NullRig()
-    assert rig.is_calibrated() is True
-    assert rig.is_configured() is True
+    assert NullRig.is_calibrated({}) is True
+    assert NullRig.is_configured({}) is True
     assert rig.calibrate() is True
     assert rig.configure() is True
 
@@ -30,3 +30,9 @@ def test_null_rig_lifecycle_is_noop():
 
 def test_null_rig_is_the_default_rig_type():
     assert Config.DEFAULT_CONFIG["rig"]["rig_type"] == "NullRig"
+
+
+def test_default_rig_name_is_the_hostname():
+    import socket
+
+    assert Config.DEFAULT_CONFIG["rig"]["name"] == socket.gethostname()
