@@ -118,3 +118,24 @@ def test_config_sync_false_reads_disk_without_writing(monkeypatch, tmp_path):
     assert json.loads(cfg_path.read_text(encoding="utf-8")) == {
         "lampyr": {"mice_directory": "X:/custom"}
     }
+
+
+def test_rigconfig_aliases_rig_configuration(monkeypatch, tmp_path):
+    app_dir = tmp_path / "AppData"
+    monkeypatch.setattr(config_module.Config, "_APP_DATA_DIR", str(app_dir))
+    monkeypatch.setattr(
+        config_module.Config, "_CONFIG_FILE_PATH", str(app_dir / "config.json")
+    )
+
+    config = config_module.Config(sync=False)
+
+    # rigconfig is a live alias for the nested rig.configuration dict.
+    assert config.rigconfig == {}
+    assert config.rigconfig is config._config["rig"]["configuration"]
+
+    config.rigconfig["sipper_calib"] = 10000
+    assert config.get("rig.configuration") == {"sipper_calib": 10000}
+
+    config.rigconfig = {"size": 5}
+    assert config.get("rig.configuration") == {"size": 5}
+    assert config.rigconfig is config._config["rig"]["configuration"]
