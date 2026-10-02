@@ -18,7 +18,7 @@ class ConfigFile:
     so that new keys are always available while user-set values are preserved.
     """
 
-    def __init__(self, default_config : dict, fp : str):
+    def __init__(self, default_config : dict, fp : str, sync : bool = True):
         """
         Load configuration from disk, filling missing keys from ``default_config``.
 
@@ -28,11 +28,16 @@ class ConfigFile:
             Nested dict of default values.  Any key absent from the on-disk
             file is supplied from here.
         fp : str
-            Path to the JSON file to load from and save to.  Created on the
-            first :meth:`save` call if it does not yet exist.
+            Path to the JSON file to load from and, when ``sync`` is True,
+            save to.  Created on the first :meth:`save` call if it does not
+            yet exist.
+        sync : bool, optional
+            When False, the file at ``fp`` is still read on load but
+            :meth:`save` becomes a no-op, keeping changes in memory only.
         """
         self._default = deepcopy(default_config)
         self._syncfp = fp
+        self._sync = sync
         self._load()
 
     def _load(self):
@@ -147,6 +152,8 @@ class ConfigFile:
         place.  A failed write therefore leaves the previous configuration
         file untouched.
         """
+        if not self._sync:
+            return
         target_dir = os.path.dirname(os.path.abspath(self._syncfp))
         temp_path = None
         try:
@@ -224,17 +231,35 @@ class Config(ConfigFile):
         'notifications': {}
     }
 
-    def __init__(self):
+    def __init__(self, sync : bool = True):
         """
         Initialise the application config, creating AppData directory if needed.
 
         Also stamps the current Lampyr version into the config on every
         startup so that ``lampyr.version`` always reflects the installed
         package.
+
+        Parameters
+        ----------
+        sync : bool, optional
+            When False, the on-disk config is read for defaults but never
+            written to, so ``set`` calls stay in memory only.
         """
-        os.makedirs(self._APP_DATA_DIR, exist_ok=True)
-        super().__init__(self.DEFAULT_CONFIG, self._CONFIG_FILE_PATH)
+        if sync:
+            os.makedirs(self._APP_DATA_DIR, exist_ok=True)
+        super().__init__(self.DEFAULT_CONFIG, self._CONFIG_FILE_PATH, sync=sync)
         self.set('lampyr.version', __version__)
+    
+    def readonly_copy(self):
+        """
+        Return a non-syncing Config with a snapshot of the current values.
+
+        The copy still exposes ``_APP_DATA_DIR`` (so it can drive a
+        DataHandler) but never writes to disk.
+        """
+        clone = Config(sync=False)
+        clone._config = deepcopy(self._config)
+        return clone
     
     def load_extended_config(self, key, default = {}):
         """
