@@ -118,3 +118,30 @@ def configure_rig(lampyr : Lampyr):
     name = input('Rig Name: ')
     lampyr.config.set('rig.name', name)
     lampyr.config.set('rig.configured', 1)
+
+def select_rig(lampyr : Lampyr):
+    """
+    List available rig definitions, let the user choose one, then run rig setup.
+
+    Stores the choice in ``config['rig.rig_type']`` and then runs the same
+    walkthrough as :func:`configure_rig`.
+    """
+    from lampyr.rigs.abstract import all_rig_definitions
+
+    rig_names = sorted(all_rig_definitions().keys())
+    if not rig_names:
+        click.echo('No rig definitions found.')
+        raise Abort()
+
+    click.echo('Available rigs:')
+    for index, name in enumerate(rig_names, 1):
+        click.echo(f'  {index}. {name}')
+
+    choice = click.prompt(
+        'Select a rig',
+        type=click.IntRange(1, len(rig_names)),
+    )
+    selected = rig_names[choice - 1]
+    lampyr.config.set('rig.rig_type', selected)
+    click.echo(f'Selected rig: {selected}')
+    configure_rig(lampyr)
