@@ -17,8 +17,8 @@ def test_null_rig_is_trivially_calibrated_and_configured():
     rig = NullRig()
     assert NullRig.is_calibrated({}) is True
     assert NullRig.is_configured({}) is True
-    assert rig.calibrate() is True
-    assert rig.configure() is True
+    assert rig.calibrate(None, None) is True
+    assert rig.configure(None, None) is True
 
 
 def test_null_rig_lifecycle_is_noop():
