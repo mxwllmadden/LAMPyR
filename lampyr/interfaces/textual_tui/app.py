@@ -688,15 +688,14 @@ class RunScreen(Screen):
 
             # Describe rig start failures explicitly — actions.Abort has no message
             out("Checking rig configuration...")
-            configured = self.app.lampyr.config.get("rig.configured")
-            calibrated = self.app.lampyr.config.get("rig.calibrated")
-            if not configured or configured < 1:
+            rig_cls = self.app.lampyr.rigmanager.rig_cls
+            if not rig_cls.is_configured(self.app.lampyr.config):
                 out("\x1b[1;31mERROR: Rig is not configured.\x1b[0m")
-                out("\x1b[33mRun 'lampyr rig configure' or use developer mode.\x1b[0m")
+                out("\x1b[33mRun 'lampyr rig configure'.\x1b[0m")
                 error = True
                 return
-            if calibrated < time.time() - (5 * 24 * 60 * 60):
-                out("\x1b[1;31mERROR: Rig calibration has expired.\x1b[0m")
+            if not rig_cls.is_calibrated(self.app.lampyr.config):
+                out("\x1b[1;31mERROR: Rig is not calibrated.\x1b[0m")
                 out("\x1b[33mTap CALIBRATE on the main screen.\x1b[0m")
                 error = True
                 return
@@ -981,11 +980,8 @@ class LampyrApp(App):
 
     def _heartbeat(self) -> None:
         """Maintain calibration/heartbeat state and launch due scheduled work."""
-        try:
-            calibrated = self.lampyr.config.get("rig.calibrated")
-            expired = calibrated < time.time() - (5 * 24 * 60 * 60)
-        except (KeyError, TypeError):
-            expired = True
+        rig_cls = self.lampyr.rigmanager.rig_cls
+        expired = not rig_cls.is_calibrated(self.lampyr.config)
 
         calibration_active = any(
             isinstance(s, (CalibrationScreen, CalibrationConfirmScreen))

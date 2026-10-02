@@ -37,11 +37,11 @@ class RigManager(AbstractManager):
 
     def connect(self):
         """
-        Connect to the Arduino rig and apply the stored sipper calibration.
+        Connect to the rig and apply the stored sipper calibration.
 
-        Instantiates :class:`~lampyr.rigs.rigcontrol.ArduinoBanditRig_0`,
-        starts the serial listener thread, and sets the dispenser size from
-        ``config['rig.sipper_calib']``.
+        Instantiates the configured rig class, starts the serial listener
+        thread, and sets the dispenser size from
+        ``config.rigconfig['sipper_calib']``.
         """
         self._output_func('Loading rig config')
         self._output_func('Connecting to Arduino Rig...')
@@ -49,7 +49,8 @@ class RigManager(AbstractManager):
         self._output_func('Creating serial monitor thread...')
         self.rig.start()
         self._output_func('Setting stored rig sipper calibration...')
-        self.rig.reward.setsize(self.config.get('rig.sipper_calib')) #to be removed
+        calib = self.config.rigconfig.get('sipper_calib') or {}
+        self.rig.reward.setsize(calib.get('size', 10000))
         self.connected = True
 
     def disconnect(self):
@@ -78,8 +79,7 @@ class RigManager(AbstractManager):
         4. Validates with a final test dispense.
         5. Repeats until ``|measured_volume - 0.005 ml| < 0.0005 ml``.
 
-        Stores the calibrated size in ``config['rig.sipper_calib']`` and
-        updates ``config['rig.calibrated']`` with the current timestamp.
+        Stores the calibrated size in ``config.rigconfig['sipper_calib']``.
         Connects to the rig first if not already connected, and disconnects
         afterwards if it was not connected before.
         """
@@ -132,7 +132,7 @@ class RigManager(AbstractManager):
                 self._output_func('\nBEGINING CALIBRATION')
                 if est_sipp is None:
                     try:
-                        est_sipp = int(self.config.get('rig.sipper_calib'))
+                        est_sipp = int((self.config.rigconfig.get('sipper_calib') or {}).get('size', 10000))
                     except:
                         est_sipp = 10000
                 if est_sipp <= 6000:
@@ -167,8 +167,11 @@ class RigManager(AbstractManager):
                     self._output_func('Calibration failed. Repeating calibration.')
             self._output_func('Calibration success')
             self._output_func(f'Rig reward size is set to {est_sipp}')
-            self.config.set('rig.sipper_calib', est_sipp)
-            self.config.set('rig.calibrated', round(time.time()))
+            self.config.rigconfig['sipper_calib'] = {
+                'size': est_sipp,
+                'calibrated_at': time.time(),
+            }
+            self.config.save()
         finally:
             if not was_connected:
                 self.disconnect()

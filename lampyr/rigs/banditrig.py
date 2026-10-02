@@ -184,6 +184,32 @@ class Camera(Component):
         return idx
 
 class BanditRig(AbstractHardwareRig):
+    CONFIGURATION = {
+        'handedness': {
+            'prompt': 'Rig handedness (1 = right-handed, -1 = left-handed)',
+            'type': int,
+            'choices': [1, -1],
+            'default': 1,
+        },
+    }
+    CALIBRATION = {
+        'sipper_calib': {'type': dict, 'default': {'size': 10000, 'calibrated_at': 0}},
+    }
+    CALIBRATION_VALIDITY = 5 * 24 * 60 * 60  # seconds
+
+    @classmethod
+    def is_calibrated(cls, config):
+        if not super().is_calibrated(config):
+            return False
+        entry = config.rigconfig.get('sipper_calib')
+        if not isinstance(entry, dict):
+            return False
+        size = entry.get('size')
+        calibrated_at = entry.get('calibrated_at')
+        if size is None or calibrated_at is None:
+            return False
+        return calibrated_at > time.time() - cls.CALIBRATION_VALIDITY
+
     def setup(self):
         serialinterface = SerialInterface_ArduinoTRV(baud=115200, timeout=1)
         self.register_interface('HudaHub', serialinterface)
@@ -191,7 +217,7 @@ class BanditRig(AbstractHardwareRig):
         self.register_component('licks', Lick(serialinterface))
         self.register_component('play', Speaker(serialinterface))
         self.register_component('reward', Sipper(serialinterface))
-        handedness = self.config.get('rig.handedness') #kluge for wheel lock
+        handedness = self.config_value('handedness', 1)
         self.register_component('wheellock', WheelLock(serialinterface, handedness = handedness))
         self.register_component('laser', LaserControl(serialinterface))
         
@@ -216,12 +242,6 @@ class BanditRig(AbstractHardwareRig):
         cam = Camera(serialinterface, camerainterface)
         self.register_component('camera', cam)
         self.camera.begin()
-
-    def is_calibrated(self):
-        pass
-
-    def is_configured(self):
-        pass
 
     def calibrate(self):
         pass
