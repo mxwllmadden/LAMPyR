@@ -6,22 +6,18 @@ Created on Mon Aug 25 18:40:27 2025
 """
 
 from lampyr.managers.abstract import AbstractManager
-from lampyr.rigs.rigcontrol import ArduinoBanditRig_0
 from lampyr.rigs.abstract import all_rig_definitions, AbstractHardwareRig
 from lampyr.rigs.banditrig import BanditRig
-
-import numpy as np
-import time
 
 
 
 class RigManager(AbstractManager):
     """
-    Manages connection to and calibration of the physical rig.
+    Manages connection to and calibration of the configured rig.
 
     Attributes
     ----------
-    rig : ArduinoBanditRig_0 or None
+    rig : AbstractHardwareRig or None
         The connected rig object; ``None`` until :meth:`connect` is called.
     connected : bool
         Whether a rig is currently connected.
@@ -37,20 +33,16 @@ class RigManager(AbstractManager):
 
     def connect(self):
         """
-        Connect to the rig and apply the stored sipper calibration.
+        Connect to the configured rig.
 
-        Instantiates the configured rig class, starts the serial listener
-        thread, and sets the dispenser size from
-        ``config.rigconfig['sipper_calib']``.
+        Instantiates the rig class and starts it. Calibration and any other
+        rig-specific setup are the rig's responsibility.
         """
         self._output_func('Loading rig config')
-        self._output_func('Connecting to Arduino Rig...')
+        self._output_func('Connecting to rig...')
         self.rig = self.rig_cls(config = self.config)
-        self._output_func('Creating serial monitor thread...')
+        self._output_func('Starting rig...')
         self.rig.start()
-        self._output_func('Setting stored rig sipper calibration...')
-        calib = self.config.rigconfig.get('sipper_calib') or {}
-        self.rig.reward.setsize(calib.get('size', 10000))
         self.connected = True
 
     def disconnect(self):
@@ -69,109 +61,16 @@ class RigManager(AbstractManager):
 
     def calibrate(self):
         """
-        Interactively calibrate the sipper dispenser to deliver ~5 µl per reward.
+        Connect (if needed) and delegate calibration to the rig.
 
-        Performs a multi-point gravimetric calibration:
-
-        1. Tests three dispense sizes around the current estimate.
-        2. Fits a linear regression to the measured volumes.
-        3. Solves for the size that produces 5 µl.
-        4. Validates with a final test dispense.
-        5. Repeats until ``|measured_volume - 0.005 ml| < 0.0005 ml``.
-
-        Stores the calibrated size in ``config.rigconfig['sipper_calib']``.
-        Connects to the rig first if not already connected, and disconnects
-        afterwards if it was not connected before.
+        The rig's ``calibrate`` method performs the interactive procedure using
+        the input/output functions passed directly.
         """
         was_connected = self.connected
         if not self.connected:
             self.connect()
-
-        def linreg(x, y):
-            x = np.asarray(x)
-            y = np.asarray(y)
-            a, b = np.polyfit(x, y, 1)
-            y_pred = a * x + b
-            r2 = 1 - np.sum((y - y_pred)**2) / np.sum((y - np.mean(y))**2)
-
-            return a, b, r2
-
-        def inputfloat(prompt):
-            while True:
-                val = self._input_func(prompt)
-                try:
-                    number = float(val)
-                    break
-                except ValueError:
-                    self._output_func("Please enter a valid number.")
-            return number
-
-        def calib_disp(disp_size, initial_value=None):
-            disp_size = int(disp_size)
-            self.rig.reward.setsize(disp_size)
-            if initial_value is None:
-                initial_value = inputfloat('INPUT WEIGHT (g): ')
-                if initial_value == 0.0:
-                    self._output_func("Zero entered — restarting calibration cycle.")
-                    return None
-            time.sleep(0.1)
-            for i in range(200):
-                self.rig.reward.give()
-                time.sleep(0.3)
-            new_value = inputfloat('INPUT NEW WEIGHT (g):')
-            if new_value == 0.0:
-                self._output_func("Zero entered — restarting calibration cycle.")
-                return None
-            dvol = (new_value - initial_value) / 200
-            self._output_func(f'Reward Size: {disp_size} produces {str(dvol)[:10]} ml reward')
-            return dvol, new_value
-
         try:
-            est_sipp = None
-            while True:
-                self._output_func('\nBEGINING CALIBRATION')
-                if est_sipp is None:
-                    try:
-                        est_sipp = int((self.config.rigconfig.get('sipper_calib') or {}).get('size', 10000))
-                    except:
-                        est_sipp = 10000
-                if est_sipp <= 6000:
-                    est_sipp = 10000
-                dsizes = [int(est_sipp*(2/3)), est_sipp, int(est_sipp*1.5)]
-                dvols = []
-                next_initial = None
-                restart = False
-                for disp_size in dsizes:
-                    result = calib_disp(disp_size, initial_value=next_initial)
-                    if result is None:
-                        restart = True
-                        break
-                    dvol, next_initial = result
-                    dvols.append(dvol)
-                if restart:
-                    continue
-                slope, coeff, r2 = linreg(dsizes, dvols)
-                if r2 < 0.9:
-                    self._output_func('Failed to produce linear regression. Repeating Calibration.')
-                    continue
-                est_sipp = int((0.005 - coeff) / slope)
-                self._output_func(f'Estimated correct reward size is {est_sipp}')
-                self._output_func('Beginning dispenser test...')
-                result = calib_disp(est_sipp, initial_value=next_initial)
-                if result is None:
-                    continue
-                dvol, _ = result
-                if abs(0.005 - dvol) < 0.0005:
-                    break
-                else:
-                    self._output_func('Calibration failed. Repeating calibration.')
-            self._output_func('Calibration success')
-            self._output_func(f'Rig reward size is set to {est_sipp}')
-            self.config.rigconfig['sipper_calib'] = {
-                'size': est_sipp,
-                'calibrated_at': time.time(),
-            }
-            self.config.save()
+            self.rig.calibrate(self._input_func, self._output_func)
         finally:
             if not was_connected:
                 self.disconnect()

@@ -14,6 +14,7 @@ import serial
 from dataclasses import dataclass, field
 from collections import defaultdict
 import time
+import numpy as np
 from lampyr.rigs.abstract import AbstractHardwareRig, Component
 from lampyr.rigs.interfaces import SerialInterface_ArduinoTRV, CameraInterface_Arducam
 
@@ -223,6 +224,12 @@ class BanditRig(AbstractHardwareRig):
         
         
 
+    def start(self):
+        """Start interfaces, then apply the stored calibration."""
+        super().start()
+        calib = self.config_value('sipper_calib') or {}
+        self.reward.setsize(calib.get('size', 10000))
+
     def initialize_mousecam(self):
         try:
             apdir = self.config._APP_DATA_DIR
@@ -243,8 +250,92 @@ class BanditRig(AbstractHardwareRig):
         self.register_component('camera', cam)
         self.camera.begin()
 
-    def calibrate(self):
-        pass
+    def calibrate(self, _input_func, _output_func):
+        """Interactively calibrate the sipper dispenser to ~5 µl per reward."""
+        def linreg(x, y):
+            x = np.asarray(x)
+            y = np.asarray(y)
+            a, b = np.polyfit(x, y, 1)
+            y_pred = a * x + b
+            r2 = 1 - np.sum((y - y_pred)**2) / np.sum((y - np.mean(y))**2)
+            return a, b, r2
 
-    def configure(self):
+        def inputfloat(prompt):
+            while True:
+                val = _input_func(prompt)
+                try:
+                    number = float(val)
+                    break
+                except ValueError:
+                    _output_func("Please enter a valid number.")
+            return number
+
+        def calib_disp(disp_size, initial_value=None):
+            disp_size = int(disp_size)
+            self.reward.setsize(disp_size)
+            if initial_value is None:
+                initial_value = inputfloat('INPUT WEIGHT (g): ')
+                if initial_value == 0.0:
+                    _output_func("Zero entered — restarting calibration cycle.")
+                    return None
+            time.sleep(0.1)
+            for i in range(200):
+                self.reward.give()
+                time.sleep(0.3)
+            new_value = inputfloat('INPUT NEW WEIGHT (g):')
+            if new_value == 0.0:
+                _output_func("Zero entered — restarting calibration cycle.")
+                return None
+            dvol = (new_value - initial_value) / 200
+            _output_func(f'Reward Size: {disp_size} produces {str(dvol)[:10]} ml reward')
+            return dvol, new_value
+
+        est_sipp = None
+        while True:
+            _output_func('\nBEGINING CALIBRATION')
+            if est_sipp is None:
+                try:
+                    est_sipp = int((self.config.rigconfig.get('sipper_calib') or {}).get('size', 10000))
+                except Exception:
+                    est_sipp = 10000
+            if est_sipp <= 6000:
+                est_sipp = 10000
+            dsizes = [int(est_sipp*(2/3)), est_sipp, int(est_sipp*1.5)]
+            dvols = []
+            next_initial = None
+            restart = False
+            for disp_size in dsizes:
+                result = calib_disp(disp_size, initial_value=next_initial)
+                if result is None:
+                    restart = True
+                    break
+                dvol, next_initial = result
+                dvols.append(dvol)
+            if restart:
+                continue
+            slope, coeff, r2 = linreg(dsizes, dvols)
+            if r2 < 0.9:
+                _output_func('Failed to produce linear regression. Repeating Calibration.')
+                continue
+            est_sipp = int((0.005 - coeff) / slope)
+            _output_func(f'Estimated correct reward size is {est_sipp}')
+            _output_func('Beginning dispenser test...')
+            result = calib_disp(est_sipp, initial_value=next_initial)
+            if result is None:
+                continue
+            dvol, _ = result
+            if abs(0.005 - dvol) < 0.0005:
+                break
+            else:
+                _output_func('Calibration failed. Repeating calibration.')
+
+        _output_func('Calibration success')
+        _output_func(f'Rig reward size is set to {est_sipp}')
+        self.config.rigconfig['sipper_calib'] = {
+            'size': est_sipp,
+            'calibrated_at': time.time(),
+        }
+        self.config.save()
+
+    def configure(self, _input_func, _output_func):
         pass
