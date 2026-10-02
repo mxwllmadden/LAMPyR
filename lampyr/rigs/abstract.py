@@ -26,6 +26,7 @@ class AbstractHardwareRig(ABC):
     def __init__(self, *args, config = None, **kwargs):
         self.interfaces = {}
         self.components = {}
+        self.services = {}
         self.config = config or {} # this is expected to be the lampyr config object
         self.setup(*args, **kwargs)
     
@@ -60,18 +61,30 @@ class AbstractHardwareRig(ABC):
             raise ValueError(f'Attempted to register {name} twice')
         self.interfaces[name] = interface_obj
     
+    def register_service(self, name, service_obj):
+        if hasattr(self, name):
+            raise ValueError('That name is already reserved')
+        setattr(self, name, service_obj)
+        self.services[name] = service_obj
+
     def start(self):
+        for service in self.services.values():
+            service.start()
         for interface in self.interfaces.values():
             interface.start()
     
     def stop(self):
         for component in self.components.values():
             component.stop()
+        for service in self.services.values():
+            service.stop()
         time.sleep(2)
         for interface in self.interfaces.values():
             interface.stop()
     
     def disconnect(self):
+        for service in self.services.values():
+            service.disconnect()
         for interface in self.interfaces.values():
             interface.disconnect()
     
@@ -244,6 +257,30 @@ class AbstractInterface(ABC):
     def register_extendeddatafile(self, filepath, data_type):
         self.extendeddata.append({'fp' : filepath,
                                   'type' : data_type})
+
+class AbstractService(ABC):
+    """A rig-owned worker that manages state or threads but produces no data.
+
+    Services share the lifecycle of interfaces (start/stop/disconnect) but are
+    never serialized into session dumps. Subclasses override the lifecycle
+    methods they need; the defaults are no-ops.
+    """
+
+    def __init__(self, *args, **kwargs):
+        self.setup(*args, **kwargs)
+
+    @abstractmethod
+    def setup(self, *args, **kwargs):
+        pass
+
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+    def disconnect(self):
+        pass
 
 class Component(ABC):
     def __init__(self, *args, **kwargs):
