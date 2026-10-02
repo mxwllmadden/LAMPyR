@@ -101,7 +101,14 @@ class DataHandler(AbstractManager):
             return
 
         os.makedirs(self.pending_sessions_dir, exist_ok=True)
-        for pending_dir in sorted(Path(self.pending_sessions_dir).iterdir()):
+        self._publish_pending_sessions()
+
+    def _publish_pending_sessions(self):
+        """Attempt to publish every committed pending session on disk."""
+        pending_root = Path(self.pending_sessions_dir)
+        if not pending_root.is_dir():
+            return
+        for pending_dir in sorted(pending_root.iterdir()):
             if (not pending_dir.is_dir()
                     or pending_dir.name.startswith('.')
                     or not (pending_dir / 'manifest.json').is_file()):
@@ -219,6 +226,10 @@ class DataHandler(AbstractManager):
             self._output_func(
                 f'Session {session.uniquesessionid} was published, but its '
                 f'local pending copy could not be removed: {error}')
+
+        # Publication worked for this session, so opportunistically flush any
+        # older pending sessions that failed on a previous attempt.
+        self._publish_pending_sessions()
 
         if should_register:
             if (published_history is not None

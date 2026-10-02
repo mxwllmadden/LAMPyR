@@ -236,3 +236,36 @@ def test_close_attempts_all_shutdown_steps_after_failures():
         lampyr.close()
 
     assert calls == ['disconnect', 'session', 'mouse', 'backup']
+
+
+def test_successful_save_flushes_previous_pending_sessions(tmp_path, monkeypatch):
+    handler, lampyr, app_dir, mice_dir = make_handler(tmp_path)
+
+    original_publish = handler._publish_pending_session
+    calls = {'n': 0}
+
+    def flaky_publish(pending):
+        calls['n'] += 1
+        if calls['n'] == 1:
+            raise OSError('offline')
+        return original_publish(pending)
+
+    monkeypatch.setattr(handler, '_publish_pending_session', flaky_publish)
+
+    # First session fails to publish and is left pending.
+    session_a, _ = make_session(tmp_path, session_id='session_a')
+    lampyr.session = session_a
+    assert handler.savesession() == 'pending'
+    pending_a = pending_dir(app_dir, session_a)
+    assert pending_a.is_dir()
+
+    # A later successful save should also flush the older pending session.
+    session_b, _ = make_session(tmp_path, session_id='session_b')
+    lampyr.session = session_b
+    assert handler.savesession() == 'published'
+
+    assert not pending_a.exists()
+    remote_a = (mice_dir / session_a.mouseid / 'lampyr_sessionhistory'
+                / f'{session_a.uniquesessionid}.lampyr.json')
+    assert remote_a.is_file()
+
