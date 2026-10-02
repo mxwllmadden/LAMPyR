@@ -981,6 +981,7 @@ class LampyrApp(App):
     def _heartbeat(self) -> None:
         """Maintain calibration/heartbeat state and launch due scheduled work."""
         rig_cls = self.lampyr.rigmanager.rig_cls
+        configured = rig_cls.is_configured(self.lampyr.config)
         expired = not rig_cls.is_calibrated(self.lampyr.config)
 
         calibration_active = any(
@@ -1005,7 +1006,7 @@ class LampyrApp(App):
                     severity="error", timeout=20 * 60)
 
         # Calibration always wins, including a confirm screen pushed above.
-        if calibration_active or calibration_pushed or session_running:
+        if calibration_active or calibration_pushed or session_running or not configured:
             return
         if not isinstance(self.screen, MainScreen):
             return
