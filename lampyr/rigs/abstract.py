@@ -71,11 +71,11 @@ class AbstractHardwareRig(ABC):
         return True
     
     @abstractmethod
-    def calibrate(self):
+    def calibrate(self, _input_func, _output_func):
         pass
     
     @abstractmethod
-    def configure(self):
+    def configure(self, _input_func, _output_func):
         pass
     
     def register_component(self, name, component_obj):
@@ -158,10 +158,10 @@ class NullRig(AbstractHardwareRig):
     def disconnect(self):
         pass
 
-    def calibrate(self):
+    def calibrate(self, _input_func, _output_func):
         return True
 
-    def configure(self):
+    def configure(self, _input_func, _output_func):
         return True
 
 
