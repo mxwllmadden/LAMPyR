@@ -607,7 +607,8 @@ class DataHandler(AbstractManager):
             shutil.move(e['fp'], target_fp)
             self._output_func('Collected {fname}')
 
-    def _mouse_session_list_from_files(self, mouseid):
+    def session_list(self, mouseid):
+        """Return session IDs for a mouse from its session files on disk."""
         data_dir = self.config.get('lampyr.mice_directory')
         dir_fp = os.path.join(data_dir,
                               mouseid,
@@ -626,7 +627,7 @@ class DataHandler(AbstractManager):
             mouse_obj.history = []
             if mouse in SYSTEM_MOUSE_IDS:
                 continue
-            sessionlist = self._mouse_session_list_from_files(mouse)
+            sessionlist = self.session_list(mouse)
             print(f'Processing {len(sessionlist)} sessions')
             for session in sessionlist:
                 try:
