@@ -123,8 +123,8 @@ class AutomationRig(AbstractHardwareRig):
         }
         return properties, {}, []
 
-    def calibrate(self):
+    def calibrate(self, _input_func, _output_func):
         return True
 
-    def configure(self):
+    def configure(self, _input_func, _output_func):
         return True
