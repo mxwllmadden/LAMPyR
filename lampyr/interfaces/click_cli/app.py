@@ -164,18 +164,6 @@ def reset(lampyr):
 
 @cli.command()
 @click.pass_obj
-def developer(lampyr):
-    passw = click.prompt("Input Password")
-    if passw != 'photuris':
-        click.echo('Denied')
-    else:
-        lampyr.config.set('rig.calibrated', 100000000000)
-        lampyr.config.set('rig.name', 'Photuris')
-        lampyr.config.set('rig.configured', True)
-        click.echo("Configuration set to developer mode.")
-    
-@cli.command()
-@click.pass_obj
 def info(lampyr):
     actions.printtitle(f'LAMPYR BEHAVIOR SOFTWARE v{__version__}')
     actions.printheader('CONFIG')
