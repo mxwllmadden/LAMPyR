@@ -587,6 +587,8 @@ class ResponseAbstractStage(Stage):
         def allowedrange(deg): return min(max(5, deg), 40)
         responsethresholds_deg = {'Left': allowedrange(15-adjustment),
                                   'Right': allowedrange(15+adjustment)}
+        if 'BanditTrial' not in self.mouse.mouse_behav_param_overrides:
+            self.mouse.mouse_behav_param_overrides['BanditTrial'] = {}
         self.mouse.mouse_behav_param_overrides[
             'BanditTrial']['responsethresholds_deg'] = responsethresholds_deg
 
