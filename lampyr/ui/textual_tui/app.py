@@ -24,6 +24,7 @@ from textual.widgets import Button, Footer, Label, RichLog
 from lampyr import Lampyr
 from lampyr import actions
 from lampyr.segments.behavior import Task
+from lampyr.segments.automation import AutomationSegment
 
 
 # ---------------------------------------------------------------------------
@@ -367,15 +368,25 @@ class CalibrationScreen(Screen):
 # ---------------------------------------------------------------------------
 
 
-def _discover_task_names(behaviors: dict) -> list[str]:
-    """Return registered, concrete ``Task`` names for selection screens."""
+def _discover_segment_names(behaviors: dict, segment_type: type) -> list[str]:
+    """Return registered, concrete segment names of the requested type."""
     return [
         name for name, cls in behaviors.items()
         if isinstance(cls, type)
-        and issubclass(cls, Task)
-        and cls is not Task
+        and issubclass(cls, segment_type)
+        and cls is not segment_type
         and not inspect.isabstract(cls)
     ]
+
+
+def _discover_task_names(behaviors: dict) -> list[str]:
+    """Return registered, concrete ``Task`` names for manual run screens."""
+    return _discover_segment_names(behaviors, Task)
+
+
+def _discover_automation_names(behaviors: dict) -> list[str]:
+    """Return registered, concrete ``AutomationSegment`` names for scheduling."""
+    return _discover_segment_names(behaviors, AutomationSegment)
 
 
 class BehaviorSelectScreen(Screen):
@@ -400,9 +411,13 @@ class BehaviorSelectScreen(Screen):
         )
         yield Label(header, id="behsel-header")
         yield Button("◀  RETURN TO MAIN", id="behsel-return")
-        task_names = _discover_task_names(self.app.lampyr.behaviors)
+        segment_names = (
+            _discover_automation_names(self.app.lampyr.behaviors)
+            if self._scheduling
+            else _discover_task_names(self.app.lampyr.behaviors)
+        )
         with VerticalScroll(id="behavior-list"):
-            for name in task_names:
+            for name in segment_names:
                 yield Button(name, classes="behavior-btn")
             if self._scheduling:
                 yield Button("None", id="behsel-none")
@@ -773,23 +788,23 @@ class RunScreen(Screen):
 class ScheduledRunScreen(RunScreen):
     """Run the configured automated task against the dedicated sentinel mouse."""
 
-    AUTOMOUSE = "AUTOMOUSE"
+    AUTOMATION = "AUTOMATION"
 
     def __init__(self, task_class_name: str, session_params: dict = None):
         super().__init__(
-            self.AUTOMOUSE,
+            self.AUTOMATION,
             task_class_name,
             session_params=session_params,
         )
 
     def _load_mouse(self) -> None:
-        """Create AUTOMOUSE if necessary, then explicitly make it active."""
+        """Create the AUTOMATION mouse if necessary, then make it active."""
         mousemanager = self.app.lampyr.mousemanager
-        if not mousemanager.exists(self.AUTOMOUSE):
-            mousemanager.create(self.AUTOMOUSE)
+        if not mousemanager.exists(self.AUTOMATION):
+            mousemanager.create(self.AUTOMATION)
         # create() sets the active mouse, but always load explicitly too: a
         # real mouse loaded before this screen must never receive this session.
-        mousemanager.load(self.AUTOMOUSE)
+        mousemanager.load(self.AUTOMATION)
 
     @on(RunScreen.RunDone)
     def on_done(self, event: RunScreen.RunDone) -> None:
@@ -896,7 +911,7 @@ class LampyrApp(App):
     """Lampyr TUI — launched via `lampyr go`."""
 
     CSS_PATH = impres.files("lampyr").joinpath(
-        "interfaces/textual_tui/app.tcss"
+        "ui/textual_tui/app.tcss"
     )
 
     def __init__(self):
@@ -943,13 +958,13 @@ class LampyrApp(App):
             task_class = getattr(self.lampyr, "behaviors", {}).get(task_class_name)
         if not (
             isinstance(task_class, type)
-            and issubclass(task_class, Task)
-            and task_class is not Task
+            and issubclass(task_class, AutomationSegment)
+            and task_class is not AutomationSegment
             and not inspect.isabstract(task_class)
         ):
             if task_class_name:
                 self.notify(
-                    f"Scheduled task is not a valid behavior: {task_class_name}",
+                    f"Scheduled automation is not a valid segment: {task_class_name}",
                     severity="error",
                     timeout=5,
                 )
@@ -1022,8 +1037,8 @@ class LampyrApp(App):
             if window is None or not (
                 isinstance(task_name, str)
                 and isinstance(task_class, type)
-                and issubclass(task_class, Task)
-                and task_class is not Task
+                and issubclass(task_class, AutomationSegment)
+                and task_class is not AutomationSegment
                 and not inspect.isabstract(task_class)
             ):
                 return

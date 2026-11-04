@@ -6,6 +6,14 @@ def test_null_rig_is_discoverable():
     assert "NullRig" in all_rig_definitions()
 
 
+def test_automation_rig_is_discoverable():
+    # RigManager imports supported rig classes to register them with the
+    # subclass-based discovery mechanism used by `lampyr rig select`.
+    import lampyr.managers.hardware  # noqa: F401
+
+    assert "AutomationRig" in all_rig_definitions()
+
+
 def test_null_rig_has_no_components_or_interfaces():
     rig = NullRig()
     assert rig.components == {}

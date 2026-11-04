@@ -8,13 +8,14 @@ Created on Wed May 14 15:02:02 2025
 import click
 import time
 import os
+import subprocess
+import sys
 import numpy as np
 from lampyr import config, Lampyr
 from lampyr.version import __version__
 from lampyr.segments import Task, Trial, Stage, Paradigm
-from lampyr.behaviors import bandit
-from lampyr.behaviors import test
-from lampyr.rigs.rigcontrol import ArduinoBanditRig_0, SerialMonitor
+from lampyr.segments.builtin import bandit
+from lampyr.segments.builtin import test
 from lampyr import actions
 
 @click.group()
@@ -22,7 +23,7 @@ from lampyr import actions
 def cli(ctx):
     ctx.obj = Lampyr()
     if (ctx.obj.config.get('lampyr.configured') is False
-        and ctx.invoked_subcommand != 'configure'):
+        and ctx.invoked_subcommand not in ('configure', 'open-config')):
         raise click.UsageError('Lampyr is not configured. Run "lampyr configure"')
     @ctx.call_on_close
     def cleanup():
@@ -126,6 +127,37 @@ def configure(lampyr : Lampyr):
         _initial_configuration(lampyr)
     else:
         _configuration_menu(lampyr)
+
+
+def _open_folder_in_file_explorer(path):
+    """Open a directory in the platform's default file explorer."""
+    path = os.fspath(path)
+    if sys.platform == 'win32':
+        os.startfile(path)
+    elif sys.platform == 'darwin':
+        subprocess.Popen(['open', path])
+    elif sys.platform.startswith('linux'):
+        subprocess.Popen(['xdg-open', path])
+    else:
+        raise click.ClickException(
+            f'Opening folders is not supported on this platform: {sys.platform}'
+        )
+
+
+@cli.command('open-config')
+@click.pass_obj
+def open_config(lampyr : Lampyr):
+    """Open the LAMPyR configuration folder in the file explorer."""
+    folder = lampyr.config._APP_DATA_DIR
+    try:
+        if not os.path.isdir(folder):
+            raise click.ClickException(f'Configuration folder does not exist: {folder}')
+        _open_folder_in_file_explorer(folder)
+    except OSError as error:
+        raise click.ClickException(
+            f'Could not open configuration folder {folder}: {error}'
+        ) from error
+    click.echo(f'Opened configuration folder: {folder}')
 
 def _origin(cls):
     """Return a short label for where a behaviour class was defined."""
@@ -821,7 +853,7 @@ def go(lampyr: Lampyr, notouchoverlay):
         # Touch-to-mouse bridge
         if not notouchoverlay:
             _start_touch_mouse_bridge()
-    from lampyr.interfaces.textual_tui.app import LampyrApp
+    from lampyr.ui.textual_tui.app import LampyrApp
 
     app = LampyrApp()
     # Use the registry built by the CLI instance so the TUI sees exactly the

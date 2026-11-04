@@ -19,6 +19,7 @@ LAMPyR is a Python framework for running and managing behavioral experiment rigs
 - [GUI workflow](docs/gui_workflow.md)
 - [Application architecture and segment inheritance](docs/app_architecture_and_segments.md)
 - [Training management](docs/training_management.md)
+- [Roadmap](docs/roadmap.md)
 
 ## Requirements
 
@@ -216,11 +217,10 @@ Arduino sketches for supported rig variants are in `firmware/`. Flash the sketch
 
 ```text
 lampyr/                 Python package
-lampyr/interfaces/      CLI (click_cli) and Textual TUI (textual_tui) entry points
+lampyr/ui/              CLI (click_cli) and Textual TUI (textual_tui) entry points
 lampyr/managers/        Data, mouse, rig, plugin, and notification managers
 lampyr/rigs/            Hardware rig abstractions and Bandit rig components
-lampyr/segments/        Segment, task, trial, stage, and paradigm abstractions
-lampyr/behaviors/       Behavior implementations
+lampyr/segments/        Segment abstractions and built-in implementations
 lampyr/analysis/        Data analysis helpers
 lampyr/main.py, config.py, primatives.py, files.py, actions.py, math.py, version.py   Core runtime modules
 hardware/               Hardware BOM, 3D models, PCB shield files, and machining files

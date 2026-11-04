@@ -6,7 +6,7 @@ LAMPyR's GUI is a Textual terminal user interface launched by:
 lampyr go
 ```
 
-The GUI is implemented in `lampyr/interfaces/textual_tui/app.py`. It is designed for touch-first operation on rig computers while still supporting mouse/keyboard interaction.
+The GUI is implemented in `lampyr/ui/textual_tui/app.py`. It is designed for touch-first operation on rig computers while still supporting mouse/keyboard interaction.
 
 ## Startup behavior
 
@@ -108,7 +108,7 @@ When `RUN` is tapped, these values are passed as keyword arguments to `Lampyr.ru
 
 When automated tasks are enabled, tap `AUTOMATED TASK` to configure the rig's single recurring schedule.
 
-1. Select a concrete `Task` subclass. No mouse ID is requested.
+1. Select a concrete `AutomationSegment` subclass. No mouse ID is requested.
 2. Set the start and end of the daily local-time window using strict 24-hour `HH:MM` values.
 3. Tap `SAVE` to persist the complete schedule and reset its previous run marker.
 
@@ -155,7 +155,7 @@ Returning cancels the post-session animal-left timer. Returning from a manual ru
 
 ### Scheduled run screen
 
-A due automated task opens a scheduled run screen that reuses the normal session log and `ABORT` control. It creates `AUTOMOUSE` if necessary and explicitly loads that sentinel before every scheduled run, ensuring a previously loaded real mouse cannot receive the automated session.
+A due automated segment opens a scheduled run screen that reuses the normal session log and `ABORT` control. It creates the `AUTOMATION` mouse if necessary and explicitly loads it before every scheduled run, ensuring a previously loaded real mouse cannot receive the automated session.
 
 Scheduled runs do not start the post-session animal-left timer. They automatically return to the main menu after success, abort, or error, and invoke the heartbeat after returning.
 
@@ -193,7 +193,7 @@ Calibration has priority. If calibration is older than five days and no calibrat
 When calibration is current, the heartbeat launches the configured automated task only when:
 
 - automated tasks are enabled;
-- the task name resolves to a concrete imported `Task` subclass;
+- the configured name resolves to a concrete imported `AutomationSegment` subclass;
 - both configured times are valid;
 - local system time is inside the configured range;
 - the app is idle on the main screen; and

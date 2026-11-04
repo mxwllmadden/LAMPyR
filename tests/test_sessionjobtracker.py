@@ -124,6 +124,17 @@ def test_mark_completed_then_candidate_excludes_session(tmp_path, config):
     assert tracker.candidate_sessions([("job-a", 1)]) == []
 
 
+def test_pending_jobs_filters_current_versions_and_keeps_stale_jobs(tmp_path, config):
+    mice_dir = tmp_path / "mice"
+    tracker = _make_tracker(config, mice_dir)
+    tracker.mark_completed("job-a", 2, "session_1")
+    tracker.mark_completed("job-b", 1, "session_1")
+
+    assert tracker.pending_jobs(
+        [("job-a", 2), ("job-b", 2), ("job-c", 1)], "session_1"
+    ) == [("job-b", 2), ("job-c", 1)]
+
+
 def test_sessionjobtracker_never_writes_config(tmp_path, config):
     mice_dir = tmp_path / "mice"
     _make_tracker(config, mice_dir)

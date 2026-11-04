@@ -8,6 +8,7 @@ Created on Mon Aug 25 18:40:27 2025
 from lampyr.managers.abstract import AbstractManager
 from lampyr.rigs.abstract import all_rig_definitions, AbstractHardwareRig
 from lampyr.rigs.banditrig import BanditRig
+from lampyr.rigs.automationrig import AutomationRig  # noqa: F401 — register for rig discovery
 
 
 

@@ -1,6 +1,6 @@
 # LAMPyR CLI command reference
 
-This document describes the Click command-line interface defined in `lampyr/interfaces/click_cli/app.py`. The installed console script is `lampyr`; on Windows, commands are often shown as `LAMPyR` and are equivalent in normal use.
+This document describes the Click command-line interface defined in `lampyr/ui/click_cli/app.py`. The installed console script is `lampyr`; on Windows, commands are often shown as `LAMPyR` and are equivalent in normal use.
 
 Most commands create a `Lampyr` application object, load configuration from `%LOCALAPPDATA%/lampyr/config.json`, and close cleanly when the command exits. Commands that run behavior connect to the configured rig, create a session, run a segment by class name, save session/mouse data, and send completion notifications when configured.
 
@@ -13,6 +13,7 @@ lampyr [OPTIONS] COMMAND [ARGS]...
 Top-level commands:
 
 - `lampyr configure`
+- `lampyr open-config`
 - `lampyr info`
 - `lampyr list`
 - `lampyr reset`
@@ -80,6 +81,15 @@ It interactively prompts for:
 
 On completion it sets `lampyr.configured` to `True`.
 
+### `lampyr open-config`
+
+Opens the LAMPyR configuration directory in the operating system's default file
+explorer. Uses Explorer on Windows and `xdg-open` on Linux (or `open` on macOS).
+
+```bat
+lampyr open-config
+```
+
 ### `lampyr info`
 
 Prints the LAMPyR version banner and the full loaded configuration.
@@ -96,7 +106,7 @@ Lists all currently imported behavior segment subclasses grouped as paradigms, s
 lampyr list
 ```
 
-The CLI imports `lampyr.behaviors.bandit` and `lampyr.behaviors.test`, so classes from those modules are normally present. New behavior modules must be imported before the `Lampyr` object builds its subclass registry.
+The CLI imports `lampyr.segments.builtin.bandit` and `lampyr.segments.builtin.test`, so classes from those modules are normally present. New segment modules must be imported before the `Lampyr` object builds its subclass registry.
 
 ### `lampyr reset`
 

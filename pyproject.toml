@@ -27,7 +27,7 @@ video = [
 Homepage = "https://github.com/mxwllmadden"
 
 [project.scripts]
-lampyr = "lampyr.interfaces.click_cli.app:cli"
+lampyr = "lampyr.ui.click_cli.app:cli"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -35,4 +35,7 @@ include = ["lampyr", "lampyr.*"]
 
 [tool.setuptools.package-data]
 "lampyr" = ["**/*.tcss", "**/*.css"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 

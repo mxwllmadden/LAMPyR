@@ -1,6 +1,6 @@
 # LAMPyR training management
 
-This guide covers common ways to tweak mouse training without changing task source code. It focuses on the CLI workflows in `lampyr/interfaces/click_cli/app.py`, the runtime objects in `lampyr/main.py` and `lampyr/primatives.py`, and behavior parameter overrides applied by `BehaviorSegment._checkoverrides()`.
+This guide covers common ways to tweak mouse training without changing task source code. It focuses on the CLI workflows in `lampyr/ui/click_cli/app.py`, the runtime objects in `lampyr/main.py` and `lampyr/primatives.py`, and behavior parameter overrides applied by `BehaviorSegment._checkoverrides()`.
 
 For the full command list, see [CLI command reference](cli_commands.md). For how paradigms, stages, tasks, trials, slugs, and tags fit together, see [Application architecture and segment inheritance](app_architecture_and_segments.md).
 

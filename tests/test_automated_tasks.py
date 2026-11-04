@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from lampyr.interfaces.textual_tui import app as tui
+from lampyr.ui.textual_tui import app as tui
 
 
 class ConcreteTask(tui.Task):
@@ -12,6 +12,21 @@ class ConcreteTask(tui.Task):
 
     def loop(self):
         pass
+
+
+class ConcreteAutomation(tui.AutomationSegment):
+    def execute(self):
+        pass
+
+
+def test_scheduling_discovery_lists_only_automation_segments():
+    behaviors = {
+        "ConcreteTask": ConcreteTask,
+        "ConcreteAutomation": ConcreteAutomation,
+    }
+
+    assert tui._discover_task_names(behaviors) == ["ConcreteTask"]
+    assert tui._discover_automation_names(behaviors) == ["ConcreteAutomation"]
 
 
 class FakeConfig:
@@ -77,7 +92,7 @@ def _schedule_config(**overrides):
     values = {
         "rig.calibrated": time.time(),
         "lampyr.enable_automated_tasks": True,
-        "lampyr.automated_task.task": "ConcreteTask",
+        "lampyr.automated_task.task": "ConcreteAutomation",
         "lampyr.automated_task.start_time": "09:00",
         "lampyr.automated_task.end_time": "10:00",
         "lampyr.automated_task.last_run_window": None,
@@ -143,7 +158,7 @@ def test_schedule_save_is_one_complete_config_write():
     )
     screen = SimpleNamespace(
         app=fake_app,
-        _task_class_name="ConcreteTask",
+        _task_class_name="ConcreteAutomation",
         _start_time="09:00",
         _end_time="10:00",
     )
@@ -154,7 +169,7 @@ def test_schedule_save_is_one_complete_config_write():
         (
             "lampyr.automated_task",
             {
-                "task": "ConcreteTask",
+                "task": "ConcreteAutomation",
                 "start_time": "09:00",
                 "end_time": "10:00",
                 "last_run_window": None,
@@ -170,7 +185,7 @@ def test_heartbeat_marks_window_before_launch_and_only_launches_once(monkeypatch
         tui, "_active_scheduled_window", lambda *_args, **_kwargs: "2026-09-24"
     )
     app = FakeHeartbeatApp(
-        _schedule_config(), behaviors={"ConcreteTask": ConcreteTask}
+        _schedule_config(), behaviors={"ConcreteAutomation": ConcreteAutomation}
     )
 
     tui.LampyrApp._heartbeat(app)
@@ -186,9 +201,9 @@ def test_heartbeat_marks_window_before_launch_and_only_launches_once(monkeypatch
 @pytest.mark.parametrize(
     ("config_override", "behaviors"),
     [
-        ({"lampyr.enable_automated_tasks": False}, {"ConcreteTask": ConcreteTask}),
+        ({"lampyr.enable_automated_tasks": False}, {"ConcreteAutomation": ConcreteAutomation}),
         ({"lampyr.automated_task.task": "MissingTask"}, {}),
-        ({"lampyr.automated_task.start_time": "invalid"}, {"ConcreteTask": ConcreteTask}),
+        ({"lampyr.automated_task.start_time": "invalid"}, {"ConcreteAutomation": ConcreteAutomation}),
     ],
 )
 def test_heartbeat_ignores_disabled_or_invalid_schedules(
@@ -209,13 +224,27 @@ def test_heartbeat_ignores_disabled_or_invalid_schedules(
     assert app.lampyr.config.set_calls == []
 
 
+def test_heartbeat_rejects_task_when_schedule_requires_automation(monkeypatch):
+    monkeypatch.setattr(
+        tui, "_active_scheduled_window", lambda *_args, **_kwargs: "2026-09-24"
+    )
+    app = FakeHeartbeatApp(
+        _schedule_config(), behaviors={"ConcreteTask": ConcreteTask}
+    )
+
+    tui.LampyrApp._heartbeat(app)
+
+    assert app.started == 0
+    assert app.lampyr.config.set_calls == []
+
+
 def test_calibration_has_priority_over_scheduled_launch(monkeypatch):
     monkeypatch.setattr(
         tui, "_active_scheduled_window", lambda *_args, **_kwargs: "2026-09-24"
     )
     app = FakeHeartbeatApp(
         _schedule_config(**{"rig.calibrated": 0}),
-        behaviors={"ConcreteTask": ConcreteTask},
+        behaviors={"ConcreteAutomation": ConcreteAutomation},
     )
 
     tui.LampyrApp._heartbeat(app)
@@ -232,7 +261,7 @@ def test_active_run_suppresses_touch_and_scheduled_launch(monkeypatch):
     screens = [tui.MainScreen(), tui.RunScreen("mouse", "ConcreteTask")]
     app = FakeHeartbeatApp(
         _schedule_config(),
-        behaviors={"ConcreteTask": ConcreteTask},
+        behaviors={"ConcreteAutomation": ConcreteAutomation},
         screens=screens,
     )
 
@@ -250,13 +279,13 @@ def test_scheduled_run_creates_and_explicitly_loads_automouse():
         load=lambda mouseid: calls.append(("load", mouseid)),
     )
     screen = SimpleNamespace(
-        AUTOMOUSE="AUTOMOUSE",
+        AUTOMATION="AUTOMATION",
         app=SimpleNamespace(lampyr=SimpleNamespace(mousemanager=mousemanager)),
     )
 
     tui.ScheduledRunScreen._load_mouse(screen)
 
-    assert calls == [("create", "AUTOMOUSE"), ("load", "AUTOMOUSE")]
+    assert calls == [("create", "AUTOMATION"), ("load", "AUTOMATION")]
 
 
 def test_return_to_main_runs_heartbeat(monkeypatch):

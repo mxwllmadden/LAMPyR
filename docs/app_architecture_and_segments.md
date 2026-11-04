@@ -14,9 +14,9 @@ Core package areas:
 - `lampyr/managers/` — data, mouse, rig, plugin, and notification managers.
 - `lampyr/rigs/` — hardware rig abstractions and concrete Bandit rig components.
 - `lampyr/segments/` — segment base classes for trials, tasks, stages, and paradigms.
-- `lampyr/behaviors/` — concrete behavior implementations.
-- `lampyr/interfaces/click_cli/` — Click CLI.
-- `lampyr/interfaces/textual_tui/` — Textual GUI/TUI.
+- `lampyr/segments/builtin/` — built-in concrete segment implementations.
+- `lampyr/ui/click_cli/` — Click CLI.
+- `lampyr/ui/textual_tui/` — Textual GUI/TUI.
 - `lampyr/analysis/` — colony, records, traces, dataset, segments, time, and longtidy helpers.
 
 ## `Lampyr`: the application object
@@ -231,7 +231,7 @@ The usual pattern is:
 ### Example: one trial plus one task
 
 ```python
-# lampyr/behaviors/my_behavior.py
+# lampyr/segments/builtin/my_behavior.py
 
 from dataclasses import dataclass
 from lampyr.segments import Trial, Task, BehaviorSegment
@@ -350,7 +350,7 @@ Example:
 
 ```python
 from dataclasses import dataclass
-from lampyr.behaviors.bandit import BanditTask
+from lampyr.segments.builtin.bandit import BanditTask
 
 @dataclass
 class HighRewardLeftBandit(BanditTask):
@@ -497,20 +497,20 @@ Therefore, defining a class is not enough; the module containing it must be impo
 Current CLI behavior imports include:
 
 ```python
-from lampyr.behaviors import bandit
-from lampyr.behaviors import test
+from lampyr.segments.builtin import bandit
+from lampyr.segments.builtin import test
 ```
 
 Common options for adding a new behavior module:
 
-1. Add the module under `lampyr/behaviors/`.
-2. Import it from `lampyr/interfaces/click_cli/app.py`, or from `lampyr/behaviors/__init__.py` and ensure that package import happens before registry creation.
+1. Add the module under `lampyr/segments/builtin/`.
+2. Import it from `lampyr/ui/click_cli/app.py`, or from `lampyr/segments/builtin/__init__.py` and ensure that package import happens before registry creation.
 3. Run `lampyr list` to verify the class appears.
 
 Example import line:
 
 ```python
-from lampyr.behaviors import my_behavior
+from lampyr.segments.builtin import my_behavior
 ```
 
 If the class does not appear in `lampyr list`, it has not been imported early enough.

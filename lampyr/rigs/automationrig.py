@@ -62,6 +62,11 @@ class SessionJobTracker(Component):
             if not self._is_run_through(sid, jobs)
         ]
 
+    def pending_jobs(self, jobs, session_id):
+        """Return job/version pairs still needing work on one session."""
+        return [(jobid, version) for jobid, version in jobs
+                if not self._is_processed(jobid, version, session_id)]
+
     def mark_completed(self, jobid, version, session_id):
         """Write a session/job completion marker under the coordination guard."""
         marker = self.runs_dir / session_id / f"{quote(str(jobid), safe='')}.json"
