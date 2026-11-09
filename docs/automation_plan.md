@@ -1,8 +1,8 @@
 # Automation Rig — Plan & Status
 
-Status: **rig setup refactor complete** — `RigManager` is now generic, so rigs
-other than `BanditRig` (e.g. `NullRig`, `AutomationRig`) can be connected.
-**116 tests passing.**
+Status: **rig setup refactor complete** — `RigManager` is generic, and both
+`NullRig` and `AutomationRig` have manager-level connect/calibrate smoke tests.
+The full test suite passes (**146 tests**).
 
 ---
 
@@ -39,25 +39,30 @@ other than `BanditRig` (e.g. `NullRig`, `AutomationRig`) can be connected.
   `RigManager.connect()` no longer assumes a `reward` component;
   `RigManager.calibrate()` is now a thin connect → `rig.calibrate(...)` →
   disconnect wrapper. I/O functions are passed directly, not stored.
+- `AutomationRig` is imported for rig discovery. Manager-level smoke tests cover
+  discovery, configuration/calibration checks, connect, calibrate, and disconnect
+  for both `NullRig` and `AutomationRig`.
 
 ---
 
 ## Remaining
 
-1. **Make `AutomationRig` discoverable**
-   - It is not imported anywhere, so `all_rig_definitions()` / `rig select`
-     cannot see it. Add one import in a central place (e.g. `hardware.py`).
+1. **Define and implement job execution in `AutomationSegment.execute()`**
+   - It currently classifies jobs but does not instantiate or execute them.
+   - Define how jobs receive session/colony data and return or persist analysis
+     results; call `mark_completed` only after successful execution.
 
-2. **Test the automation rig (smoke test)**
-   - Exercise `RigManager.connect()` / `calibrate()` / `is_configured` /
-     `is_calibrated` against `NullRig` and `AutomationRig`.
+2. **Finish job-scope semantics**
+   - Session jobs have versioned completion markers and reservation filtering.
+   - Colony jobs currently have no durable completion tracking and may be yielded
+     again on a later pass. Decide how they complete/retry.
+   - Arbitrary jobs are classified but not executed; implement them or explicitly
+     defer/remove the scope.
 
-3. **Finish `AutomationSegment.execute()`**
-   - Still a stub (`lampyr/segments/automation.py`). Define the automation
-     contract: discover candidates → run each job → `mark_completed`.
-
-4. **`AUTOMOUSE` → `AUTOMATION`**
-   - The scheduler / TUI still uses the old `AUTOMOUSE` sentinel identity.
+3. **Exercise the scheduled automation path end to end**
+   - Verify the TUI selects the correct rig type and data context for analysis
+     jobs, and that failures/aborts do not leave stale reservations or completion
+     markers.
 
 ---
 
