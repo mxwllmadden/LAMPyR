@@ -951,7 +951,7 @@ class AnyWheelStageB3(ResponseAbstractStage):
             'consecutive_good', 0)
         if self.session.duration < 30:
             return
-        if self.session.participation >= 100:
+        if self.session.participation >= 150:
             consecutive_good_sessions += 1
             self.log_info('This session was a good session (>=150 responses)')
         else:
@@ -1011,7 +1011,7 @@ class AltWheelStage1B3(ResponseAbstractStage):
             if side_bias == 0:
                 consecutive_good_sessions += 1
             else:
-                adj_val += 5*sign(side_bias)
+                adj_val += 4*sign(side_bias)
                 consecutive_good_sessions = 0
         elif abs(side_bias) > 0.2:
             if signdiff(adj_val, side_bias):
@@ -1021,7 +1021,7 @@ class AltWheelStage1B3(ResponseAbstractStage):
             else:
                 self.log_info(
                     f'{bias} bias detected. Adjustment value updated.')
-                adj_val += 5*sign(side_bias)
+                adj_val += 4*sign(side_bias)
                 consecutive_good_sessions = 0
         else:
             self.log_info('This was a good session (no side bias detected)')
